@@ -1,33 +1,4 @@
 /*
-#include <opencv2/opencv.hpp>
-#include <opencv2/tracking.hpp>
-
-using namespace std;
-using namespace cv;
-
-int main(int argc, char** argv) {
-	Ptr<TrackerKCF> tracker = TrackerKCF::create();
-	VideoCapture video(0);
-	if (!video.isOpened()) {
-		cerr << "cannot read video!" << endl;
-		return -1;
-	}
-	Mat frame;
-	video.read(frame);
-	Rect2d box(270, 120, 180, 260);
-	tracker->init(frame, box);
-	while (video.read(frame)) {
-		tracker->update(frame, box);
-		rectangle(frame, box, Scalar(255, 0, 0), 2, 1);
-		imshow("Tracking", frame);
-		int k = waitKey(1);
-		if (k == 27) break;
-	}
-	return 0;
-}
-*/
-
-/*
 #include <opencv2/core.hpp>
 #include <opencv2/features2d.hpp>
 #include <opencv2/highgui.hpp>
@@ -80,18 +51,22 @@ int main(int argc, char* argv[])
 #include "opencv2/imgproc/imgproc.hpp"
 #include "opencv2/highgui/highgui.hpp"
 #include "opencv2/features2d/features2d.hpp"
-#include<deque>
-
+#include <deque>
 #include <iostream>
 #include <ctype.h>
+#include <windows.h>
 
 using namespace cv;
 using namespace std;
 
+#define PI 3.1415926
+
 deque<vector<Point2f>> windows;
-int windows_cnt = 0;
 const int MAX_WINDOWS_SIZE = 60;
 const double MIN_DISTANCE = 5;
+const int circle_num = 4;
+bool clockwise[circle_num] = {true, false, true, false};
+double phase0[circle_num] = {.0, .0, PI, PI};
 
 static void help()
 {
@@ -120,19 +95,22 @@ static void onMouse(int event, int x, int y, int flags, void* param)
 	}
 }
 */
+
+Point2f get_coordinate(int i, double t)
+{
+	double arc = phase0[i] + t * PI;
+	return Point2f((float)cos(arc), (float)sin(arc));
+}
+
 bool acceptTrackedPoint(int i)
 {
 	double cnt = 0;
-	//cout << "windows_cnt: " << windows_cnt << endl;
-	for (int j = 1; j < windows_cnt; ++j)
-	{
+	for (int j = 1; j < windows.size(); ++j)
 		//cout << windows.at(j)[i] << ' ' << windows.at(j - 1)[i] << endl;
 		cnt += (abs(windows.at(j)[i].x - windows.at(j - 1)[i].x) + abs(windows.at(j)[i].y - windows.at(j - 1)[i].y));
+	if (windows.size() <= 1) return true;
 
-	}
-	if (windows_cnt <= 1) return true;
-
-	cnt = cnt / (windows_cnt - 1);
+	cnt = cnt / (windows.size() - 1);
 	//cout << cnt << endl;
 	if (cnt > MIN_DISTANCE)
 		return true; // 说明在移动
@@ -143,13 +121,14 @@ int main(int argc, char** argv)
 {
 	help();
 
+	double start = (double)getTickCount();
 	VideoCapture cap;
 	TermCriteria termcrit(CV_TERMCRIT_ITER | CV_TERMCRIT_EPS, 20, 0.03);
 	Size  winSize(51, 51);
 	//Size subPixWinSize(10, 10);
 
 	const int MAX_COUNT = 500;
-	bool needToInit = false;
+	bool needToInit = true;
 	bool nightMode = false;
 	const int threshold = 20;
 
@@ -175,6 +154,8 @@ int main(int argc, char** argv)
 
 	for (int cnt = 0;;cnt++)
 	{
+		double t = (double)getTickCount();
+
 		Mat frame;
 		cap >> frame;
 		if (frame.empty())
@@ -201,7 +182,6 @@ int main(int argc, char** argv)
 			KeyPoint::convert(keyPoints, points[1]);
 
 			windows.clear();
-			windows_cnt = 0;
 			//addRemovePt = false;
 		}
 		else if (!points[0].empty())
@@ -214,14 +194,8 @@ int main(int argc, char** argv)
 				3, termcrit, 0, 0.001);
 			
 			windows.push_back(points[1]);
-			windows_cnt++;
-			if (windows_cnt > MAX_WINDOWS_SIZE)
-			{
+			if (windows.size() > MAX_WINDOWS_SIZE)
 				windows.pop_front();
-				windows_cnt--;
-				//cout << windows_cnt << endl;
-			}
-			cout << windows_cnt << endl;
 			
 			size_t i, k;
 			for (i = k = 0; i < points[1].size(); i++)
@@ -236,11 +210,14 @@ int main(int argc, char** argv)
 					}
 				}
 				*/
-				if ((!status[i]) || (!acceptTrackedPoint(i)))
+				if (!status[i]) //missing
 					continue;
-
+				if (!acceptTrackedPoint(int(i)))  //relative stable --> non-candidate
+					circle(image, points[1][i], 3, Scalar(255, 0, 0), -1, 8);
+				else
+					circle(image, points[1][i], 3, Scalar(0, 255, 0), -1, 8);
 				//points[1][k++] = points[1][i];
-				circle(image, points[1][i], 3, Scalar(0, 255, 0), -1, 8);
+				
 			}
 			//points[1].resize(k);
 		}
@@ -261,6 +238,10 @@ int main(int argc, char** argv)
 			cnt = 0;
 		}
 		imshow("LK Demo", image);
+
+		t = ((double)getTickCount() - t) / getTickFrequency();
+		t = 1 / t;
+		printf("%f\n", t);
 
 		char c = (char)waitKey(10);
 		if (c == 27)
