@@ -80,13 +80,18 @@ int main(int argc, char* argv[])
 #include "opencv2/imgproc/imgproc.hpp"
 #include "opencv2/highgui/highgui.hpp"
 #include "opencv2/features2d/features2d.hpp"
-
+#include<deque>
 
 #include <iostream>
 #include <ctype.h>
 
 using namespace cv;
 using namespace std;
+
+deque<vector<Point2f>> windows;
+int windows_cnt = 0;
+const int MAX_WINDOWS_SIZE = 60;
+const double MIN_DISTANCE = 5;
 
 static void help()
 {
@@ -115,6 +120,24 @@ static void onMouse(int event, int x, int y, int flags, void* param)
 	}
 }
 */
+bool acceptTrackedPoint(int i)
+{
+	double cnt = 0;
+	//cout << "windows_cnt: " << windows_cnt << endl;
+	for (int j = 1; j < windows_cnt; ++j)
+	{
+		//cout << windows.at(j)[i] << ' ' << windows.at(j - 1)[i] << endl;
+		cnt += (abs(windows.at(j)[i].x - windows.at(j - 1)[i].x) + abs(windows.at(j)[i].y - windows.at(j - 1)[i].y));
+
+	}
+	if (windows_cnt <= 1) return true;
+
+	cnt = cnt / (windows_cnt - 1);
+	//cout << cnt << endl;
+	if (cnt > MIN_DISTANCE)
+		return true; // 说明在移动
+	return false;
+}
 
 int main(int argc, char** argv)
 {
@@ -177,6 +200,8 @@ int main(int argc, char** argv)
 			m_fastDetector->detect(gray, keyPoints);
 			KeyPoint::convert(keyPoints, points[1]);
 
+			windows.clear();
+			windows_cnt = 0;
 			//addRemovePt = false;
 		}
 		else if (!points[0].empty())
@@ -187,6 +212,17 @@ int main(int argc, char** argv)
 				gray.copyTo(prevGray);
 			calcOpticalFlowPyrLK(prevGray, gray, points[0], points[1], status, err, winSize,
 				3, termcrit, 0, 0.001);
+			
+			windows.push_back(points[1]);
+			windows_cnt++;
+			if (windows_cnt > MAX_WINDOWS_SIZE)
+			{
+				windows.pop_front();
+				windows_cnt--;
+				//cout << windows_cnt << endl;
+			}
+			cout << windows_cnt << endl;
+			
 			size_t i, k;
 			for (i = k = 0; i < points[1].size(); i++)
 			{
@@ -200,13 +236,13 @@ int main(int argc, char** argv)
 					}
 				}
 				*/
-				if (!status[i])
+				if ((!status[i]) || (!acceptTrackedPoint(i)))
 					continue;
 
-				points[1][k++] = points[1][i];
+				//points[1][k++] = points[1][i];
 				circle(image, points[1][i], 3, Scalar(0, 255, 0), -1, 8);
 			}
-			points[1].resize(k);
+			//points[1].resize(k);
 		}
 		/*
 		if (addRemovePt && points[1].size() < (size_t)MAX_COUNT)
@@ -219,7 +255,7 @@ int main(int argc, char** argv)
 		}
 		*/
 		needToInit = false;
-		if (cnt == 50)
+		if (cnt == 120)
 		{
 			needToInit = true;
 			cnt = 0;
