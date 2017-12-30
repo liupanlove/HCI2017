@@ -102,9 +102,10 @@ static void help()
 		"To add/remove a feature point click it\n" << endl;
 }
 
-Point2f point;
-bool addRemovePt = false;
+//Point2f point;
+//bool addRemovePt = false;
 
+/*
 static void onMouse(int event, int x, int y, int flags, void* param)
 {
 	if (event == CV_EVENT_LBUTTONDOWN)
@@ -113,6 +114,7 @@ static void onMouse(int event, int x, int y, int flags, void* param)
 		addRemovePt = true;
 	}
 }
+*/
 
 int main(int argc, char** argv)
 {
@@ -120,11 +122,13 @@ int main(int argc, char** argv)
 
 	VideoCapture cap;
 	TermCriteria termcrit(CV_TERMCRIT_ITER | CV_TERMCRIT_EPS, 20, 0.03);
-	Size subPixWinSize(10, 10), winSize(31, 31);
+	Size  winSize(51, 51);
+	//Size subPixWinSize(10, 10);
 
 	const int MAX_COUNT = 500;
 	bool needToInit = false;
 	bool nightMode = false;
+	const int threshold = 20;
 
 	if (argc == 1 || (argc == 2 && strlen(argv[1]) == 1 && isdigit(argv[1][0])))
 		cap.open(argc == 2 ? argv[1][0] - '0' : 0);
@@ -138,15 +142,15 @@ int main(int argc, char** argv)
 	}
 
 	namedWindow("LK Demo", 1);
-	setMouseCallback("LK Demo", onMouse, 0);
+	//setMouseCallback("LK Demo", onMouse, 0);
 
 	Mat gray, prevGray, image;
 	vector<Point2f> points[2]; // 0 for prev, 1 for next
 
-	Ptr<FastFeatureDetector> m_fastDetector = FastFeatureDetector::create();
+	Ptr<FastFeatureDetector> m_fastDetector = FastFeatureDetector::create(threshold);
 	vector<KeyPoint> keyPoints;
 
-	for (;;)
+	for (int cnt = 0;;cnt++)
 	{
 		Mat frame;
 		cap >> frame;
@@ -173,7 +177,7 @@ int main(int argc, char** argv)
 			m_fastDetector->detect(gray, keyPoints);
 			KeyPoint::convert(keyPoints, points[1]);
 
-			addRemovePt = false;
+			//addRemovePt = false;
 		}
 		else if (!points[0].empty())
 		{
@@ -186,6 +190,7 @@ int main(int argc, char** argv)
 			size_t i, k;
 			for (i = k = 0; i < points[1].size(); i++)
 			{
+				/*
 				if (addRemovePt)
 				{
 					if (norm(point - points[1][i]) <= 5)
@@ -194,7 +199,7 @@ int main(int argc, char** argv)
 						continue;
 					}
 				}
-
+				*/
 				if (!status[i])
 					continue;
 
@@ -203,7 +208,7 @@ int main(int argc, char** argv)
 			}
 			points[1].resize(k);
 		}
-
+		/*
 		if (addRemovePt && points[1].size() < (size_t)MAX_COUNT)
 		{
 			vector<Point2f> tmp;
@@ -212,8 +217,13 @@ int main(int argc, char** argv)
 			points[1].push_back(tmp[0]);
 			addRemovePt = false;
 		}
-
+		*/
 		needToInit = false;
+		if (cnt == 50)
+		{
+			needToInit = true;
+			cnt = 0;
+		}
 		imshow("LK Demo", image);
 
 		char c = (char)waitKey(10);
