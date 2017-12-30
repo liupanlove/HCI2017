@@ -11,37 +11,37 @@ using namespace std;
 
 int main(int argc, char* argv[])
 {
-	VideoCapture video(0);
+VideoCapture video(0);
 
-	Mat srcImage;
+Mat srcImage;
 
-	while (video.read(srcImage)) {
+while (video.read(srcImage)) {
 
-		Mat srcGrayImage;
-		if (srcImage.channels() == 3)
-			cvtColor(srcImage, srcGrayImage, CV_RGB2GRAY);
-		else
-			srcImage.copyTo(srcGrayImage);
+Mat srcGrayImage;
+if (srcImage.channels() == 3)
+cvtColor(srcImage, srcGrayImage, CV_RGB2GRAY);
+else
+srcImage.copyTo(srcGrayImage);
 
-		Mat new_srcGrayImage;
+Mat new_srcGrayImage;
 
-		GaussianBlur(srcGrayImage, new_srcGrayImage, Size(5, 5), 0, 0);
-		vector<KeyPoint>detectKeyPoint;
-		Mat keyPointImage;
-		
-		Ptr<FastFeatureDetector> fast = FastFeatureDetector::create();
-		fast->detect(new_srcGrayImage, detectKeyPoint);
-		//drawKeypoints(srcImage, detectKeyPoint, keyPointImage, Scalar(0, 0, 255), DrawMatchesFlags::DRAW_RICH_KEYPOINTS);
-		drawKeypoints(srcImage, detectKeyPoint, keyPointImage, Scalar(0, 0, 255), DrawMatchesFlags::DEFAULT);
-		
+GaussianBlur(srcGrayImage, new_srcGrayImage, Size(5, 5), 0, 0);
+vector<KeyPoint>detectKeyPoint;
+Mat keyPointImage;
 
-		imshow("src image", srcImage);
-		imshow("keyPoint image2", keyPointImage);
+Ptr<FastFeatureDetector> fast = FastFeatureDetector::create();
+fast->detect(new_srcGrayImage, detectKeyPoint);
+//drawKeypoints(srcImage, detectKeyPoint, keyPointImage, Scalar(0, 0, 255), DrawMatchesFlags::DRAW_RICH_KEYPOINTS);
+drawKeypoints(srcImage, detectKeyPoint, keyPointImage, Scalar(0, 0, 255), DrawMatchesFlags::DEFAULT);
 
-		int k = waitKey(1);
-		if (k == 27) break;   //ESC
-	}
-	return 0;
+
+imshow("src image", srcImage);
+imshow("keyPoint image2", keyPointImage);
+
+int k = waitKey(1);
+if (k == 27) break;   //ESC
+}
+return 0;
 }
 */
 
@@ -55,6 +55,8 @@ int main(int argc, char* argv[])
 #include <iostream>
 #include <ctype.h>
 #include <windows.h>
+#include <string>
+#include <stdio.h>
 
 using namespace cv;
 using namespace std;
@@ -63,10 +65,10 @@ using namespace std;
 
 deque<vector<Point2f>> windows;
 const int MAX_WINDOWS_SIZE = 60;
-const double MIN_DISTANCE = 5;
+const double MIN_DISTANCE = 3;
 const int circle_num = 4;
-bool clockwise[circle_num] = {true, false, true, false};
-double phase0[circle_num] = {.0, .0, PI, PI};
+bool clockwise[circle_num] = { true, false, true, false };
+double phase0[circle_num] = { .0, .0, PI, PI };
 
 static void help()
 {
@@ -88,11 +90,11 @@ static void help()
 /*
 static void onMouse(int event, int x, int y, int flags, void* param)
 {
-	if (event == CV_EVENT_LBUTTONDOWN)
-	{
-		point = Point2f((float)x, (float)y);
-		addRemovePt = true;
-	}
+if (event == CV_EVENT_LBUTTONDOWN)
+{
+point = Point2f((float)x, (float)y);
+addRemovePt = true;
+}
 }
 */
 
@@ -121,6 +123,8 @@ int main(int argc, char** argv)
 {
 	help();
 
+
+
 	double start = (double)getTickCount();
 	VideoCapture cap;
 	TermCriteria termcrit(CV_TERMCRIT_ITER | CV_TERMCRIT_EPS, 20, 0.03);
@@ -131,6 +135,8 @@ int main(int argc, char** argv)
 	bool needToInit = true;
 	bool nightMode = false;
 	const int threshold = 20;
+
+	char fps_string[10];
 
 	if (argc == 1 || (argc == 2 && strlen(argv[1]) == 1 && isdigit(argv[1][0])))
 		cap.open(argc == 2 ? argv[1][0] - '0' : 0);
@@ -152,9 +158,11 @@ int main(int argc, char** argv)
 	Ptr<FastFeatureDetector> m_fastDetector = FastFeatureDetector::create(threshold);
 	vector<KeyPoint> keyPoints;
 
-	for (int cnt = 0;;cnt++)
+	double t = 0;
+	double fps = 0;
+	for (int cnt = 0;; cnt++)
 	{
-		double t = (double)getTickCount();
+		t = (double)getTickCount();
 
 		Mat frame;
 		cap >> frame;
@@ -192,22 +200,21 @@ int main(int argc, char** argv)
 				gray.copyTo(prevGray);
 			calcOpticalFlowPyrLK(prevGray, gray, points[0], points[1], status, err, winSize,
 				3, termcrit, 0, 0.001);
-			
 			windows.push_back(points[1]);
 			if (windows.size() > MAX_WINDOWS_SIZE)
 				windows.pop_front();
-			
+
 			size_t i, k;
 			for (i = k = 0; i < points[1].size(); i++)
 			{
 				/*
 				if (addRemovePt)
 				{
-					if (norm(point - points[1][i]) <= 5)
-					{
-						addRemovePt = false;
-						continue;
-					}
+				if (norm(point - points[1][i]) <= 5)
+				{
+				addRemovePt = false;
+				continue;
+				}
 				}
 				*/
 				if (!status[i]) //missing
@@ -217,18 +224,18 @@ int main(int argc, char** argv)
 				else
 					circle(image, points[1][i], 3, Scalar(0, 255, 0), -1, 8);
 				//points[1][k++] = points[1][i];
-				
+
 			}
 			//points[1].resize(k);
 		}
 		/*
 		if (addRemovePt && points[1].size() < (size_t)MAX_COUNT)
 		{
-			vector<Point2f> tmp;
-			tmp.push_back(point);
-			cornerSubPix(gray, tmp, winSize, cvSize(-1, -1), termcrit);
-			points[1].push_back(tmp[0]);
-			addRemovePt = false;
+		vector<Point2f> tmp;
+		tmp.push_back(point);
+		cornerSubPix(gray, tmp, winSize, cvSize(-1, -1), termcrit);
+		points[1].push_back(tmp[0]);
+		addRemovePt = false;
 		}
 		*/
 		needToInit = false;
@@ -237,11 +244,20 @@ int main(int argc, char** argv)
 			needToInit = true;
 			cnt = 0;
 		}
-		imshow("LK Demo", image);
 
 		t = ((double)getTickCount() - t) / getTickFrequency();
-		t = 1 / t;
-		printf("%f\n", t);
+		fps = 1.0 / t;
+		sprintf(fps_string, "%.2f", fps);
+
+		string fps_string_show("fps:");
+		fps_string_show += fps_string;
+		putText(image, fps_string_show,
+			cv::Point(5, 20),           // 文字坐标，以左下角为原点
+			cv::FONT_HERSHEY_SIMPLEX,   // 字体类型
+			0.5, // 字体大小
+			cv::Scalar(0, 0, 0));       // 字体颜色
+
+		imshow("LK Demo", image);
 
 		char c = (char)waitKey(10);
 		if (c == 27)
