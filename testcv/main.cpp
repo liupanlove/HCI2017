@@ -81,9 +81,11 @@ int main(int argc, char* argv[])
 #include "opencv2/highgui/highgui.hpp"
 #include "opencv2/features2d/features2d.hpp"
 #include<deque>
-
+#include<cmath>
 #include <iostream>
 #include <ctype.h>
+#include<string>
+#include<cstdio>
 
 using namespace cv;
 using namespace std;
@@ -91,7 +93,7 @@ using namespace std;
 deque<vector<Point2f>> windows;
 int windows_cnt = 0;
 const int MAX_WINDOWS_SIZE = 60;
-const double MIN_DISTANCE = 5;
+const double MIN_DISTANCE = 3;
 
 static void help()
 {
@@ -142,6 +144,8 @@ bool acceptTrackedPoint(int i)
 int main(int argc, char** argv)
 {
 	help();
+	
+	
 
 	VideoCapture cap;
 	TermCriteria termcrit(CV_TERMCRIT_ITER | CV_TERMCRIT_EPS, 20, 0.03);
@@ -152,6 +156,8 @@ int main(int argc, char** argv)
 	bool needToInit = false;
 	bool nightMode = false;
 	const int threshold = 20;
+
+	char fps_string[10];
 
 	if (argc == 1 || (argc == 2 && strlen(argv[1]) == 1 && isdigit(argv[1][0])))
 		cap.open(argc == 2 ? argv[1][0] - '0' : 0);
@@ -173,8 +179,15 @@ int main(int argc, char** argv)
 	Ptr<FastFeatureDetector> m_fastDetector = FastFeatureDetector::create(threshold);
 	vector<KeyPoint> keyPoints;
 
+	double t = 0;
+	double fps = 0;
 	for (int cnt = 0;;cnt++)
 	{
+		//cout << t << endl;
+		//printf("%d", 10);
+		t = (double)getTickCount();
+		//printf("%f", t);
+
 		Mat frame;
 		cap >> frame;
 		if (frame.empty())
@@ -222,6 +235,7 @@ int main(int argc, char** argv)
 				//cout << windows_cnt << endl;
 			}
 			cout << windows_cnt << endl;
+			//cout << t << endl;
 			
 			size_t i, k;
 			for (i = k = 0; i < points[1].size(); i++)
@@ -260,6 +274,19 @@ int main(int argc, char** argv)
 			needToInit = true;
 			cnt = 0;
 		}
+
+		t = ((double)getTickCount() - t) / getTickFrequency();
+		fps = 1.0 / t;
+		sprintf(fps_string, "%.2f", fps);
+		
+		string fps_string_show("fps:");
+		fps_string_show += fps_string;
+		putText(image, fps_string_show, 
+			cv::Point(5, 20),           // 文字坐标，以左下角为原点
+			cv::FONT_HERSHEY_SIMPLEX,   // 字体类型
+			0.5, // 字体大小
+			cv::Scalar(0, 0, 0));       // 字体颜色
+
 		imshow("LK Demo", image);
 
 		char c = (char)waitKey(10);
