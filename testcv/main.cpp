@@ -24,11 +24,14 @@ const int UPDATE_CYCLE = 120;
 const double MIN_DISTANCE = 3;
 const double TH_IN = 0.3;
 const double TH_CORR = 0.8;
+const int TH_ESCAPE = 30;
+const int TH_WARNING = 20;
 const int CIRCLE_NUM = 4;
 deque<Point2f> track_circle[CIRCLE_NUM];
 bool clockwise[CIRCLE_NUM] = { true, false, true, false };
 double phase0[CIRCLE_NUM] = { .0, .0, PI, PI };
 Point2f m_point;
+bool state_setting;
 
 struct Action {
 	/*
@@ -47,6 +50,8 @@ struct Action {
 	*/
 	int action_type, sub_action_type;
 	double value;
+
+	Action(int _action_type) :action_type(_action_type){ sub_action_type = 0; value = .0; };
 };
 
 static void help()
@@ -98,14 +103,7 @@ vector<bool> acceptTrackedPoint()
 	vector<bool> ans;
 
 	for (list<deque<Point2f>>::iterator iter = windows.begin(); iter != windows.end(); ++iter)
-	{
-		if (judgeTrackedPoint(*iter))
-		{
-			ans.push_back(true);
-		}
-		else
-			ans.push_back(false);
-	}
+		ans.push_back(judgeTrackedPoint(*iter));
 	return ans;
 }
 
@@ -132,19 +130,6 @@ double set_bar(Point2f point)
 	double value = point.x - m_point.x;
 	return value;
 }
-
-/*
-if (!status[0])
-	action.sub_action_type = 2;
-double point_y = set_escape(point)
-if (point_y > threshold_escape)
-	action.sub_action_type = 2;
-else
-{
-	action.sub_action_type = 0 if (point_y < threshold_warning) else 1;
-	action.value = set_bar(points[1][0]);
-}
-*/
 
 void print_point(Point2f point)
 {
@@ -296,11 +281,10 @@ int main(int argc, char** argv)
 	vector<KeyPoint> keyPoints;
 	vector<Point2f> points_key;
 
-	double t = 0;
-	double now = 0;
-	double fps = 0;
+	double t = 0, now = 0, fps = 0;
 	size_t i;
-	for (points[0].clear(),points[1].clear();;)
+	points[0].clear(), points[1].clear();
+	for (state_setting = false;;)
 	{
 		t = (double)getTickCount();
 
@@ -320,96 +304,141 @@ int main(int argc, char** argv)
 		if (nightMode)
 			image = Scalar::all(0);
 
-		// automatic initialization
-		//goodFeaturesToTrack(gray, points[1], MAX_COUNT, 0.01, 10, Mat(), 3, false, 0.04);
-		//cornerSubPix(gray, points[1], subPixWinSize, Size(-1, -1), termcrit);
-
-		m_fastDetector->detect(gray, keyPoints);
-		std::sort(keyPoints.begin(), keyPoints.end(), response_comparator);
-		KeyPoint::convert(keyPoints, points_key);
-		int new_size = (int)points_key.size();
-		if (points[0].size() + new_size > MAX_POINT_SIZE)
-			new_size = MAX_POINT_SIZE - (int)points[0].size();
-		points[0].insert(points[0].end(), points_key.begin(), points_key.begin() + new_size);
-
 		vector<uchar> status;
 		vector<float> err;
-
-		if (prevGray.empty())
-			gray.copyTo(prevGray);
-		calcOpticalFlowPyrLK(prevGray, gray, points[0], points[1], status, err, winSize,
-			3, termcrit, 0, 0.001);
-
-		i = 0;
-		points[0].clear();
-		vector<bool> accept = acceptTrackedPoint();
-		for (auto iter = windows.begin(); iter != windows.end();)
+		if (!state_setting)
 		{
-			if (!status[i] || !accept[i] || err[i] > MAX_ERROR)
+			// automatic initialization
+			//goodFeaturesToTrack(gray, points[1], MAX_COUNT, 0.01, 10, Mat(), 3, false, 0.04);
+			//cornerSubPix(gray, points[1], subPixWinSize, Size(-1, -1), termcrit);
+
+			m_fastDetector->detect(gray, keyPoints);
+			std::sort(keyPoints.begin(), keyPoints.end(), response_comparator);
+			KeyPoint::convert(keyPoints, points_key);
+			int new_size = (int)points_key.size();
+			if (points[0].size() + new_size > MAX_POINT_SIZE)
+				new_size = MAX_POINT_SIZE - (int)points[0].size();
+			points[0].insert(points[0].end(), points_key.begin(), points_key.begin() + new_size);
+
+			if (prevGray.empty())
+				gray.copyTo(prevGray);
+			calcOpticalFlowPyrLK(prevGray, gray, points[0], points[1], status, err, winSize,
+				3, termcrit, 0, 0.001);
+
+			i = 0;
+			points[0].clear();
+			vector<bool> accept = acceptTrackedPoint();
+			for (auto iter = windows.begin(); iter != windows.end();)
 			{
-				iter = windows.erase(iter);
+				if (!status[i] || !accept[i] || err[i] > MAX_ERROR)
+				{
+					iter = windows.erase(iter);
+					i++;
+					continue;
+				}
+				if (iter->size() == MAX_WINDOWS_SIZE)
+					iter->pop_front();
+				iter->push_back(points[1][i]);
+				points[0].push_back(points[1][i]);
 				i++;
-				continue;
+				iter++;
 			}
-			if (iter->size() == MAX_WINDOWS_SIZE)
-				iter->pop_front();
-			iter->push_back(points[1][i]);
-			points[0].push_back(points[1][i]);
-			i++;
-			iter++;
-		}
-		while (i < points[1].size())
-		{
-			deque<Point2f> que_point(1, points[1][i]);
-			windows.push_back(que_point);
-			points[0].push_back(points[1][i]);
-			i++;
-		}
-
-		now = ((double)getTickCount() - start) / getTickFrequency();
-		for (i = 0; i < CIRCLE_NUM; i++)
-		{
-			track_circle[i].push_back(get_coordinate((int)i,now));
-			if (track_circle[i].size() > MAX_WINDOWS_SIZE)
-				track_circle[i].pop_front();
-			if (i == 0 || i == 1)
-				circle(image, track_circle[i].back(), 3, Scalar(0, 0, 255), -1, 8);
-		}
-
-		vector<deque<Point2f>> circles = get_circle();
-		vector<float> circle_x[CIRCLE_NUM], circle_y[CIRCLE_NUM];
-		for (i = 0; i < CIRCLE_NUM; i++)
-			for (auto j = track_circle[i].begin(); j != track_circle[i].end(); j++)
+			while (i < points[1].size())
 			{
-				circle_x[i].push_back(j->x);
-				circle_y[i].push_back(j->y);
+				deque<Point2f> que_point(1, points[1][i]);
+				windows.push_back(que_point);
+				points[0].push_back(points[1][i]);
+				i++;
 			}
-		for (i = 0; i < points[0].size(); i++)
+
+			now = ((double)getTickCount() - start) / getTickFrequency();
+			for (i = 0; i < CIRCLE_NUM; i++)
+			{
+				track_circle[i].push_back(get_coordinate((int)i, now));
+				if (track_circle[i].size() > MAX_WINDOWS_SIZE)
+					track_circle[i].pop_front();
+				if (i == 0 || i == 1)
+					circle(image, track_circle[i].back(), 3, Scalar(0, 0, 255), -1, 8);
+			}
+
+			vector<deque<Point2f>> m_circles = get_circle();
+			vector<float> circle_x[CIRCLE_NUM], circle_y[CIRCLE_NUM];
+			for (i = 0; i < CIRCLE_NUM; i++)
+				for (auto j = track_circle[i].begin(); j != track_circle[i].end(); j++)
+				{
+					circle_x[i].push_back(j->x);
+					circle_y[i].push_back(j->y);
+				}
+			for (i = 0; i < points[0].size(); i++)
+			{
+
+				if (m_circles[i].empty()) //no circle
+					circle(image, points[0][i], 3, Scalar(255, 0, 0), -1, 8);
+				else
+				{
+					vector<float> m_x, m_y;
+					for (auto j = m_circles[i].begin(); j != m_circles[i].end(); j++)
+					{
+						m_x.push_back(j->x);
+						m_y.push_back(j->y);
+					}
+					bool flag = false;
+					for (int j = 0; j < CIRCLE_NUM; j++)
+						if (pearson(m_x.begin(), circle_x[j].begin(), MAX_WINDOWS_SIZE) > TH_CORR
+							&& pearson(m_y.begin(), circle_y[j].begin(), MAX_WINDOWS_SIZE) > TH_CORR)
+						{
+							flag = true;
+							printf("CIRCLE %d !!\n", j);
+							circle(image, points[0][i], 3, Scalar(0, 0, 255), -1, 8);
+							if (j >= 2)
+							{
+								state_setting = true;
+								m_point = points[0][i];
+								points[0].clear();
+								points[0].push_back(m_point);
+								windows.clear();
+								deque<Point2f> que_point(1, m_point);
+								windows.push_back(que_point);
+							}
+							break;
+						}
+					if (!flag)
+						circle(image, points[0][i], 3, Scalar(0, 255, 0), -1, 8);
+				}
+				if (state_setting)
+					break;
+			}
+		}
+		else
 		{
-			
-			if (circles[i].empty()) //no circle
-				circle(image, points[0][i], 3, Scalar(255, 0, 0), -1, 8);
+			Action action(2);
+			calcOpticalFlowPyrLK(prevGray, gray, points[0], points[1], status, err, winSize,
+				3, termcrit, 0, 0.001);
+			if (!status[0])
+			{
+				action.sub_action_type = 2;
+				state_setting = false;
+				points[0].clear();
+				windows.clear();
+			}
 			else
 			{
-				vector<float> m_x, m_y;
-				for (auto j = circles[i].begin(); j != circles[i].end(); j++)
+				double point_y = set_escape(points[1].front());
+				if (point_y > TH_ESCAPE)
 				{
-					m_x.push_back(j->x);
-					m_y.push_back(j->y);
+					action.sub_action_type = 2;
+					state_setting = false;
+					points[0].clear();
+					windows.clear();
 				}
-				bool flag = false;
-				for (int j = 0; j < CIRCLE_NUM; j++)
-					if (pearson(m_x.begin(), circle_x[j].begin(), MAX_WINDOWS_SIZE) > TH_CORR
-						&& pearson(m_y.begin(), circle_y[j].begin(), MAX_WINDOWS_SIZE) > TH_CORR)
-					{	
-						flag = true;
-						printf("CIRCLE %d !!\n",j);
-						circle(image, points[1][i], 3, Scalar(0, 0, 255), -1, 8);
-						break;
-					}
-				if(!flag)
-					circle(image, points[1][i], 3, Scalar(0, 255, 0), -1, 8);
-			}			
+				else
+				{
+					action.sub_action_type = point_y < TH_WARNING ? 0 : 1;
+					action.value = set_bar(points[1][0]);
+					circle(image, points[1][0], 3, Scalar(0, 0, 255), -1, 8);
+					std::swap(points[0], points[1]);
+				}
+			}
 		}
 
 		t = ((double)getTickCount() - t) / getTickFrequency();
