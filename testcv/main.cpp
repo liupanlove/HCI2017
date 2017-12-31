@@ -18,7 +18,7 @@ using namespace std;
 
 deque<vector<Point2f>> windows;
 const int MAX_WINDOWS_SIZE = 60;
-const double MIN_DISTANCE = 3;
+const double MIN_DISTANCE = 10;
 const int circle_num = 4;
 bool clockwise[circle_num] = { true, false, true, false };
 double phase0[circle_num] = { .0, .0, PI, PI };
@@ -65,22 +65,33 @@ bool acceptTrackedPoint(int i)
 	for (int j = 1; j < windows.size(); ++j)
 		//cout << windows.at(j)[i] << ' ' << windows.at(j - 1)[i] << endl;
 		cnt += (abs(windows.at(j)[i].x - windows.at(j - 1)[i].x) + abs(windows.at(j)[i].y - windows.at(j - 1)[i].y));
-	if (windows.size() <= 1) return true;
+	if (windows.size() <= 1) return false;
 
 	cnt = cnt / (windows.size() - 1);
 	//cout << cnt << endl;
 	if (cnt > MIN_DISTANCE)
-		return true; // 璇存槑鍦ㄧЩ鍔?
+		return true; // 璇存槑鍦ㄧЩ鍔?  说明在移动
 	return false;
+}
+
+void print_point(Point2f point)
+{
+	printf("%f %f\n", point.x, point.y);
 }
 
 struct CircleData
 {
 	Point2f center;
 	double radius;
+
+	void print()
+	{
+		print_point(center);
+		printf("%f\n", radius);
+	}
 };
 
-CircleData findCircle(Point2f pt1, Point2f pt2, Point2f pt3)
+CircleData findCircle(Point2f pt1, Point2f pt2, Point2f pt3)      //应该没问题
 {
 	//浠わ細
 	//A1 = 2 * pt2.x - 2 * pt1.x      B1 = 2 * pt1.y - 2 * pt2.y       C1 = pt1.y虏 + pt2.x虏 - pt1.x虏 - pt2.y虏
@@ -119,7 +130,8 @@ double get_distance(Point2f point1, Point2f point2)
 {
 	return sqrtf((point1.x - point2.x)*(point1.x - point2.x) + (point1.y - point2.y)*(point1.y - point2.y));
 }
-vector<int> get_rand_points(int max) // int i,     // max >= 3;
+
+vector<int> get_rand_points(int max) // int i,     // max >= 3;    // 应该没问题
 {
 	vector<int> points;
 	int flag, tmp;
@@ -143,27 +155,55 @@ vector<int> get_rand_points(int max) // int i,     // max >= 3;
 
 	return points;
 }
+
+
+
 bool is_circle(int i)
 {
 	 // max = size;
 	int size = windows.size();
-	int max = size;
-	vector<int> points = get_rand_points(max);
+	//printf("%d\n", size);
+	if (size < 60) return false;
+	int max = 59;
 
-	int point1 = points[0];
-	int point2 = points[1];
-	int point3 = points[2];
+	vector<int> points = get_rand_points(5);      // 0-59
+	CircleData circle_data1 = findCircle(windows.at(points[0])[i], windows.at(points[1])[i], windows.at(points[2])[i]);
+	
+	points = get_rand_points(5);
+	CircleData circle_data2 = findCircle(windows.at(points[0])[i], windows.at(points[1])[i], windows.at(points[2])[i]);
+	
+	points = get_rand_points(5);
+	CircleData circle_data3 = findCircle(windows.at(points[0])[i], windows.at(points[1])[i], windows.at(points[2])[i]);
+	
+	//circle_data1.print();
+	//circle_data2.print();
+	//circle_data3.print();
 
-	CircleData circle_data = findCircle(windows.at(point1)[i], windows.at(point2)[i], windows.at(point3)[i]);
 
-	for (int j = 0; j < max; ++j)
+	if (circle_data1.radius < 100 || circle_data1.radius > 500) return false;
+	for (int j = 0; j < 40; ++j)
 	{
-		if ((get_distance(windows.at(size - j - 1)[i], circle_data.center) > (1 + TH_IN) * circle_data.radius) || (get_distance(windows.at(size - j - 1)[i], circle_data.center) < (1 - TH_IN) * circle_data.radius))
+		if ((get_distance(windows.at(size - j - 1)[i], circle_data1.center) > ((1 + TH_IN) * circle_data1.radius)) || (get_distance(windows.at(size - j - 1)[i], circle_data1.center) < ((1 - TH_IN) * circle_data1.radius)))
 			return false;
 	}
 
+	//circle_data1.print();
+	//circle_data2.print();
+	//circle_data3.print();
+
+	//printf("\n");
+	//for (int j = 0; j < max; ++j)
+	//{
+	//	printf("%f %f\n", windows.at(size - j - 1)[i].x, windows.at(size - j - 1)[i].y);
+	//}
+	//cout << circle_data.center << endl;
+	//cout << circle_data.radius << endl;
+	//printf("%d\n", size);
+	//printf("%f\n", circle_data.radius);
 	return true;
 }
+
+
 int main(int argc, char** argv)
 {
 	srand(time(NULL));
@@ -257,9 +297,14 @@ int main(int argc, char** argv)
 					circle(image, points[1][i], 3, Scalar(255, 0, 0), -1, 8);
 				else
 				{
-					circle(image, points[1][i], 3, Scalar(0, 255, 0), -1, 8);
+					
 					if (is_circle(i))
-						printf("%s\n", "I find a circle");
+					{
+						circle(image, points[1][i], 3, Scalar(0, 0, 255), -1, 8);
+						printf("a circle has been find\n");
+					}
+					else
+						circle(image, points[1][i], 3, Scalar(0, 255, 0), -1, 8);
 				}
 				//points[1][k++] = points[1][i];
 
@@ -267,7 +312,7 @@ int main(int argc, char** argv)
 			//points[1].resize(k);
 		}
 		needToInit = false;
-		if (cnt == 120)
+		if (cnt == 200)
 		{
 			needToInit = true;
 			cnt = 0;
