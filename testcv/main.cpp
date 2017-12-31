@@ -119,12 +119,22 @@ bool acceptTrackedPoint(int i)
 	return false;
 }
 
+template<class InputIt1, class InputIt2>
+double pearson(InputIt1 firstX, InputIt2 firstY, int n) {
+	double xy_sum = inner_product(firstX, firstX + n, firstY, 0);
+	double x2_sum = inner_product(firstX, firstX + n, firstX, 0);
+	double y2_sum = inner_product(firstY, firstY + n, firstY, 0);
+	double x_sum = accumulate(firstX, firstX + n, 0);
+	double y_sum = accumulate(firstY, firstY + n, 0);
+
+	double deno = sqrt((x2_sum - 1.0 * pow(x_sum, 2) / n)*(y2_sum - 1.0 * pow(y_sum, 2) / n));
+	return (xy_sum - 1.0 * x_sum * y_sum / n) / deno;
+}
+
 int main(int argc, char** argv)
 {
 	help();
-
-
-
+	
 	double start = (double)getTickCount();
 	VideoCapture cap;
 	TermCriteria termcrit(CV_TERMCRIT_ITER | CV_TERMCRIT_EPS, 20, 0.03);
