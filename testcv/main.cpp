@@ -1,52 +1,3 @@
-/*
-#include <opencv2/core.hpp>
-#include <opencv2/features2d.hpp>
-#include <opencv2/highgui.hpp>
-#include <opencv2/opencv.hpp>
-#include <iostream>
-#include <vector>
-
-using namespace cv;
-using namespace std;
-
-int main(int argc, char* argv[])
-{
-VideoCapture video(0);
-
-Mat srcImage;
-
-while (video.read(srcImage)) {
-
-Mat srcGrayImage;
-if (srcImage.channels() == 3)
-cvtColor(srcImage, srcGrayImage, CV_RGB2GRAY);
-else
-srcImage.copyTo(srcGrayImage);
-
-Mat new_srcGrayImage;
-
-GaussianBlur(srcGrayImage, new_srcGrayImage, Size(5, 5), 0, 0);
-vector<KeyPoint>detectKeyPoint;
-Mat keyPointImage;
-
-Ptr<FastFeatureDetector> fast = FastFeatureDetector::create();
-fast->detect(new_srcGrayImage, detectKeyPoint);
-//drawKeypoints(srcImage, detectKeyPoint, keyPointImage, Scalar(0, 0, 255), DrawMatchesFlags::DRAW_RICH_KEYPOINTS);
-drawKeypoints(srcImage, detectKeyPoint, keyPointImage, Scalar(0, 0, 255), DrawMatchesFlags::DEFAULT);
-
-
-imshow("src image", srcImage);
-imshow("keyPoint image2", keyPointImage);
-
-int k = waitKey(1);
-if (k == 27) break;   //ESC
-}
-return 0;
-}
-*/
-
-
-
 #include "opencv2/video/tracking.hpp"
 #include "opencv2/imgproc/imgproc.hpp"
 #include "opencv2/highgui/highgui.hpp"
@@ -65,10 +16,32 @@ using namespace std;
 
 deque<vector<Point2f>> windows;
 const int MAX_WINDOWS_SIZE = 60;
+const int UPDATE_CYCLE = 120;
 const double MIN_DISTANCE = 3;
 const int circle_num = 4;
+deque<Point2f> track_circle[circle_num];
 bool clockwise[circle_num] = { true, false, true, false };
 double phase0[circle_num] = { .0, .0, PI, PI };
+Point2f m_point;
+
+struct Action {
+	/*
+	0 do nothing
+	1 play/pause
+	2 set progress
+		0 safe zone
+		1 warning zone
+		2 close
+	3 set sound
+		0 safe zone
+		1 warning zone
+		2 close
+	4 press up
+	5 press down
+	*/
+	int action_type, sub_action_type;
+	double value;
+};
 
 static void help()
 {
@@ -84,19 +57,14 @@ static void help()
 		"To add/remove a feature point click it\n" << endl;
 }
 
-//Point2f point;
-//bool addRemovePt = false;
-
-/*
 static void onMouse(int event, int x, int y, int flags, void* param)
 {
-if (event == CV_EVENT_LBUTTONDOWN)
-{
-point = Point2f((float)x, (float)y);
-addRemovePt = true;
+	if (event == CV_EVENT_LBUTTONDOWN)
+	{
+		printf("x: %f y: %f\n",(float)x,(float)y);
+	}
 }
-}
-*/
+
 
 Point2f get_coordinate(int i, double t)
 {
@@ -108,12 +76,10 @@ bool acceptTrackedPoint(int i)
 {
 	double cnt = 0;
 	for (int j = 1; j < windows.size(); ++j)
-		//cout << windows.at(j)[i] << ' ' << windows.at(j - 1)[i] << endl;
 		cnt += (abs(windows.at(j)[i].x - windows.at(j - 1)[i].x) + abs(windows.at(j)[i].y - windows.at(j - 1)[i].y));
-	if (windows.size() <= 1) return true;
+	if (windows.size() <= 1) return false;
 
 	cnt = cnt / (windows.size() - 1);
-	//cout << cnt << endl;
 	if (cnt > MIN_DISTANCE)
 		return true; // 说明在移动
 	return false;
@@ -130,6 +96,31 @@ double pearson(InputIt1 firstX, InputIt2 firstY, int n) {
 	double deno = sqrt((x2_sum - 1.0 * pow(x_sum, 2) / n)*(y2_sum - 1.0 * pow(y_sum, 2) / n));
 	return (xy_sum - 1.0 * x_sum * y_sum / n) / deno;
 }
+
+double set_escape(Point2f point)
+{
+	double value = point.y - m_point.y;
+	return abs(value);
+}
+
+double set_bar(Point2f point)
+{
+	double value = point.x - m_point.x;
+	return value;
+}
+
+/*
+if (!status[0])
+	action.sub_action_type = 2;
+double point_y = set_escape(point)
+if (point_y > threshold_escape)
+	action.sub_action_type = 2;
+else
+{
+	action.sub_action_type = 0 if (point_y < threshold_warning) else 1;
+	action.value = set_bar(points[1][0]);
+}
+*/
 
 int main(int argc, char** argv)
 {
@@ -160,7 +151,7 @@ int main(int argc, char** argv)
 	}
 
 	namedWindow("LK Demo", 1);
-	//setMouseCallback("LK Demo", onMouse, 0);
+	setMouseCallback("LK Demo", onMouse, 0);
 
 	Mat gray, prevGray, image;
 	vector<Point2f> points[2]; // 0 for prev, 1 for next
@@ -169,7 +160,9 @@ int main(int argc, char** argv)
 	vector<KeyPoint> keyPoints;
 
 	double t = 0;
+	double now = 0;
 	double fps = 0;
+	size_t i;
 	for (int cnt = 0;; cnt++)
 	{
 		t = (double)getTickCount();
@@ -189,7 +182,6 @@ int main(int argc, char** argv)
 
 		if (nightMode)
 			image = Scalar::all(0);
-
 		if (needToInit)
 		{
 			// automatic initialization
@@ -200,56 +192,44 @@ int main(int argc, char** argv)
 			KeyPoint::convert(keyPoints, points[1]);
 
 			windows.clear();
-			//addRemovePt = false;
+			for (i = 0; i < circle_num; i++)
+				track_circle[i].clear();
 		}
 		else if (!points[0].empty())
 		{
 			vector<uchar> status;
 			vector<float> err;
+
 			if (prevGray.empty())
 				gray.copyTo(prevGray);
 			calcOpticalFlowPyrLK(prevGray, gray, points[0], points[1], status, err, winSize,
 				3, termcrit, 0, 0.001);
 			windows.push_back(points[1]);
+			now = ((double)getTickCount() - start) / getTickFrequency();
+			for (i = 0; i < circle_num; i++)
+			{
+				track_circle[i].push_back(get_coordinate((int)i,now));
+				if (track_circle[i].size() > MAX_WINDOWS_SIZE)
+					track_circle[i].pop_front();
+				if (i == 0)
+					circle(image, track_circle[i].back(), 3, Scalar(0, 0, 255), -1, 8);
+			}
 			if (windows.size() > MAX_WINDOWS_SIZE)
 				windows.pop_front();
 
-			size_t i, k;
-			for (i = k = 0; i < points[1].size(); i++)
+			for (i = 0; i < points[1].size(); i++)
 			{
-				/*
-				if (addRemovePt)
-				{
-				if (norm(point - points[1][i]) <= 5)
-				{
-				addRemovePt = false;
-				continue;
-				}
-				}
-				*/
 				if (!status[i]) //missing
 					continue;
 				if (!acceptTrackedPoint(int(i)))  //relative stable --> non-candidate
 					circle(image, points[1][i], 3, Scalar(255, 0, 0), -1, 8);
 				else
 					circle(image, points[1][i], 3, Scalar(0, 255, 0), -1, 8);
-				//points[1][k++] = points[1][i];
-
 			}
-			//points[1].resize(k);
 		}
-		/*
-		if (addRemovePt && points[1].size() < (size_t)MAX_COUNT)
-		{
-		vector<Point2f> tmp;
-		tmp.push_back(point);
-		cornerSubPix(gray, tmp, winSize, cvSize(-1, -1), termcrit);
-		points[1].push_back(tmp[0]);
-		addRemovePt = false;
-		}
-		*/
+
 		needToInit = false;
-		if (cnt == 120)
+		if (cnt == UPDATE_CYCLE)
 		{
 			needToInit = true;
 			cnt = 0;
