@@ -22,7 +22,7 @@ const int MAX_POINT_SIZE = 512;
 const int MAX_ERROR = 16;
 const int UPDATE_CYCLE = 120;
 const double MIN_DISTANCE = 3;
-const double TH_IN = 0.1;
+const double TH_IN = 0.5;
 const int circle_num = 4;
 deque<Point2f> track_circle[circle_num];
 bool clockwise[circle_num] = { true, false, true, false };
@@ -232,7 +232,7 @@ bool is_circle(deque<Point2f> deque_point)
 	if (size < MAX_WINDOWS_SIZE) return false;
 
 	vector<int> points = get_rand_points(10);
-	CircleData circle_data = findCircle(deque_point[points[size - points[0] - 1]], deque_point[points[size - points[1] - 1]], deque_point[points[size - points[2] - 1]]);
+	CircleData circle_data = findCircle(deque_point[size - points[0] - 1], deque_point[size - points[1] - 1], deque_point[size - points[2] - 1]);
 
 	if (circle_data.radius > 200)  return false;
 	for (int j = 0; j < MAX_WINDOWS_SIZE; ++j)
@@ -381,28 +381,25 @@ int main(int argc, char** argv)
 			
 			if (circles[i].empty()) //no circle
 				circle(image, points[0][i], 3, Scalar(255, 0, 0), -1, 8);
-			
-			/*
-			else if (windows.size() == MAX_WINDOWS_SIZE)
+			else
 			{
 				vector<float> m_x, m_y, circle_x, circle_y;
 				for (size_t j = 0; j < MAX_WINDOWS_SIZE; j++)
 				{
-					m_x.push_back(windows[j][i].x);
-					m_y.push_back(windows[j][i].y);
+					m_x.push_back(circles[i][j].x);
+					m_y.push_back(circles[i][j].y);
 					circle_x.push_back(track_circle[0][j].x);
 					circle_y.push_back(track_circle[0][j].y);
 				}
-				if(pearson(m_x.begin(), circle_x.begin(), MAX_WINDOWS_SIZE) > 0.8
-				&& pearson(m_y.begin(), circle_y.begin(), MAX_WINDOWS_SIZE) > 0.8)
-					circle(image, points[1][i], 3, Scalar(255, 255, 0), -1, 8);
+				if (pearson(m_x.begin(), circle_x.begin(), MAX_WINDOWS_SIZE) > 0.8
+					&& pearson(m_y.begin(), circle_y.begin(), MAX_WINDOWS_SIZE) > 0.8)
+				{	
+					printf("CIRCLE!!!\n");
+					circle(image, points[1][i], 3, Scalar(0, 0, 255), -1, 8);
+				}
 				else
 					circle(image, points[1][i], 3, Scalar(0, 255, 0), -1, 8);
-			}
-			*/
-			else 
-				circle(image, points[0][i], 3, Scalar(0, 255, 0), -1, 8);
-			
+			}			
 		}
 
 		t = ((double)getTickCount() - t) / getTickFrequency();
