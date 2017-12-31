@@ -8,15 +8,18 @@
 #include <windows.h>
 #include <string>
 #include <stdio.h>
+#include<list>
 
 using namespace cv;
 using namespace std;
 
 #define PI 3.1415926
 
-deque<vector<Point2f>> windows;
+//deque<vector<Point2f>> windows;
+list<deque<Point2f>> windows;
+
 const int MAX_WINDOWS_SIZE = 60;
-const int UPDATE_CYCLE = 120;
+const int UPDATE_CYCLE = 200;
 const double MIN_DISTANCE = 3;
 const int circle_num = 4;
 deque<Point2f> track_circle[circle_num];
@@ -24,7 +27,7 @@ bool clockwise[circle_num] = { true, false, true, false };
 double phase0[circle_num] = { .0, .0, PI, PI };
 Point2f m_point;
 
-const double TH_IN = 0.05;
+const double TH_IN = 0.1;
 struct Action {
 	/*
 	0 do nothing
@@ -84,6 +87,7 @@ bool acceptTrackedPoint(int i)
 	if (cnt > MIN_DISTANCE)
 		return true; // 说明在移动
 	return false;
+
 }
 
 template<class InputIt1, class InputIt2>
@@ -205,22 +209,57 @@ vector<int> get_rand_points(int max) // int i,     // max >= 3;    // 应该没问题
 	return points;
 }
 
-bool is_circle(int i)
+bool is_circle(deque<Point2f> deque_point)
 {
+	int size = deque_point.size();
+	if (size < 60) return false;
+
+	vector<int> points = get_rand_points(10);
+	CircleData circle_data = findCircle(deque_point[points[size - points[0] - 1]], deque_point[points[size - points[1] - 1]], deque_point[points[size - points[2] - 1]]);
+
+	if (circle_data.radius > 200)  return false;
+	for (int j = 0; j < 60; ++j)
+	{
+		if ((get_distance(deque_point[j], circle_data.center) >((1 + TH_IN) * circle_data.radius)) || (get_distance(deque_point[j], circle_data.center) < ((1 - TH_IN) * circle_data.radius)))
+			return false;
+	}
+	return true;
+}
+
+vector<deque<Point2f>> get_circle()
+{
+	vector<deque<Point2f>> ans;
+	
+
+	//while(list<deque<Point2f>>::iterator iter = windows.begin(); iter != windows.)
+	for (list<deque<Point2f>>::iterator iter = windows.begin(); iter != windows.end(); ++iter)
+	{
+		if (is_circle(*iter))
+		{
+			ans.push_back(*iter);
+		}
+	}
+
+	return ans;
+}
+
+/*bool is_circle(int i) // deque<Point2f> deque_point
+{
+	
 	// max = size;
 	int size = windows.size();
 	//printf("%d\n", size);
 	if (size < 60) return false;
 	int max = 59;
 
-	vector<int> points = get_rand_points(10);      // 0-59
-	CircleData circle_data1 = findCircle(windows.at(points[0])[i], windows.at(points[1])[i], windows.at(points[2])[i]);
+	vector<int> points = get_rand_points(10);      // 0-9
+	CircleData circle_data1 = findCircle(windows.at(59 - points[0])[i], windows.at(59 - points[1])[i], windows.at(59 - points[2])[i]);
 
 	points = get_rand_points(10);
-	CircleData circle_data2 = findCircle(windows.at(points[0])[i], windows.at(points[1])[i], windows.at(points[2])[i]);
+	CircleData circle_data2 = findCircle(windows.at(59 - points[0])[i], windows.at(59 - points[1])[i], windows.at(59 - points[2])[i]);
 
 	points = get_rand_points(10);
-	CircleData circle_data3 = findCircle(windows.at(points[0])[i], windows.at(points[1])[i], windows.at(points[2])[i]);
+	CircleData circle_data3 = findCircle(windows.at(59 - points[0])[i], windows.at(59 - points[1])[i], windows.at(59 - points[2])[i]);
 
 	//circle_data1.print();
 	//circle_data2.print();
@@ -234,7 +273,7 @@ bool is_circle(int i)
 			return false;
 	}
 
-	if (circle_data2.radius > 200) return false;
+	/*if (circle_data2.radius > 200) return false;
 	for (int j = 0; j < 60; ++j)
 	{
 		if ((get_distance(windows.at(size - j - 1)[i], circle_data2.center) >((1 + TH_IN) * circle_data2.radius)) || (get_distance(windows.at(size - j - 1)[i], circle_data2.center) < ((1 - TH_IN) * circle_data2.radius)))
@@ -262,7 +301,7 @@ bool is_circle(int i)
 	//printf("%d\n", size);
 	//printf("%f\n", circle_data.radius);
 	return true;
-}
+}*/
 
 int main(int argc, char** argv)
 {
