@@ -8,8 +8,6 @@
 #include <windows.h>
 #include <string>
 #include <stdio.h>
-#include<cstdlib>
-#include<ctime>
 
 using namespace cv;
 using namespace std;
@@ -18,12 +16,33 @@ using namespace std;
 
 deque<vector<Point2f>> windows;
 const int MAX_WINDOWS_SIZE = 60;
-const double MIN_DISTANCE = 10;
+const int UPDATE_CYCLE = 120;
+const double MIN_DISTANCE = 3;
 const int circle_num = 4;
+deque<Point2f> track_circle[circle_num];
 bool clockwise[circle_num] = { true, false, true, false };
 double phase0[circle_num] = { .0, .0, PI, PI };
+Point2f m_point;
 
-const double TH_IN = 0.1;
+const double TH_IN = 0.05;
+struct Action {
+	/*
+	0 do nothing
+	1 play/pause
+	2 set progress
+		0 safe zone
+		1 warning zone
+		2 close
+	3 set sound
+		0 safe zone
+		1 warning zone
+		2 close
+	4 press up
+	5 press down
+	*/
+	int action_type, sub_action_type;
+	double value;
+};
 
 static void help()
 {
@@ -39,12 +58,32 @@ static void help()
 		"To add/remove a feature point click it\n" << endl;
 }
 
+static void onMouse(int event, int x, int y, int flags, void* param)
+{
+	if (event == CV_EVENT_LBUTTONDOWN)
+	{
+		printf("x: %f y: %f\n",(float)x,(float)y);
+	}
+}
 
 
 Point2f get_coordinate(int i, double t)
 {
 	double arc = phase0[i] + t * PI;
 	return Point2f((float)cos(arc), (float)sin(arc));
+}
+
+bool acceptTrackedPoint(int i)
+{
+	double cnt = 0;
+	for (int j = 1; j < windows.size(); ++j)
+		cnt += (abs(windows.at(j)[i].x - windows.at(j - 1)[i].x) + abs(windows.at(j)[i].y - windows.at(j - 1)[i].y));
+	if (windows.size() <= 1) return false;
+
+	cnt = cnt / (windows.size() - 1);
+	if (cnt > MIN_DISTANCE)
+		return true; // 说明在移动
+	return false;
 }
 
 template<class InputIt1, class InputIt2>
@@ -59,20 +98,30 @@ double pearson(InputIt1 firstX, InputIt2 firstY, int n) {
 	return (xy_sum - 1.0 * x_sum * y_sum / n) / deno;
 }
 
-bool acceptTrackedPoint(int i)
+double set_escape(Point2f point)
 {
-	double cnt = 0;
-	for (int j = 1; j < windows.size(); ++j)
-		//cout << windows.at(j)[i] << ' ' << windows.at(j - 1)[i] << endl;
-		cnt += (abs(windows.at(j)[i].x - windows.at(j - 1)[i].x) + abs(windows.at(j)[i].y - windows.at(j - 1)[i].y));
-	if (windows.size() <= 1) return false;
-
-	cnt = cnt / (windows.size() - 1);
-	//cout << cnt << endl;
-	if (cnt > MIN_DISTANCE)
-		return true; // 璇存槑鍦ㄧЩ鍔?  说明在移动
-	return false;
+	double value = point.y - m_point.y;
+	return abs(value);
 }
+
+double set_bar(Point2f point)
+{
+	double value = point.x - m_point.x;
+	return value;
+}
+
+/*
+if (!status[0])
+	action.sub_action_type = 2;
+double point_y = set_escape(point)
+if (point_y > threshold_escape)
+	action.sub_action_type = 2;
+else
+{
+	action.sub_action_type = 0 if (point_y < threshold_warning) else 1;
+	action.value = set_bar(points[1][0]);
+}
+*/
 
 void print_point(Point2f point)
 {
@@ -147,7 +196,7 @@ vector<int> get_rand_points(int max) // int i,     // max >= 3;    // 应该没问题
 				break;
 			}
 		}
-		if (flag == 1) 
+		if (flag == 1)
 			i--;
 		else
 			points.push_back(tmp); //points[i] = tmp;
@@ -156,37 +205,49 @@ vector<int> get_rand_points(int max) // int i,     // max >= 3;    // 应该没问题
 	return points;
 }
 
-
-
 bool is_circle(int i)
 {
-	 // max = size;
+	// max = size;
 	int size = windows.size();
 	//printf("%d\n", size);
 	if (size < 60) return false;
 	int max = 59;
 
-	vector<int> points = get_rand_points(5);      // 0-59
+	vector<int> points = get_rand_points(10);      // 0-59
 	CircleData circle_data1 = findCircle(windows.at(points[0])[i], windows.at(points[1])[i], windows.at(points[2])[i]);
-	
-	points = get_rand_points(5);
+
+	points = get_rand_points(10);
 	CircleData circle_data2 = findCircle(windows.at(points[0])[i], windows.at(points[1])[i], windows.at(points[2])[i]);
-	
-	points = get_rand_points(5);
+
+	points = get_rand_points(10);
 	CircleData circle_data3 = findCircle(windows.at(points[0])[i], windows.at(points[1])[i], windows.at(points[2])[i]);
-	
+
 	//circle_data1.print();
 	//circle_data2.print();
 	//circle_data3.print();
 
 
-	if (circle_data1.radius < 100 || circle_data1.radius > 500) return false;
-	for (int j = 0; j < 40; ++j)
+	if (circle_data1.radius > 200)  return false;
+	for (int j = 0; j < 60; ++j)
 	{
-		if ((get_distance(windows.at(size - j - 1)[i], circle_data1.center) > ((1 + TH_IN) * circle_data1.radius)) || (get_distance(windows.at(size - j - 1)[i], circle_data1.center) < ((1 - TH_IN) * circle_data1.radius)))
+		if ((get_distance(windows.at(size - j - 1)[i], circle_data1.center) >((1 + TH_IN) * circle_data1.radius)) || (get_distance(windows.at(size - j - 1)[i], circle_data1.center) < ((1 - TH_IN) * circle_data1.radius)))
 			return false;
 	}
 
+	if (circle_data2.radius > 200) return false;
+	for (int j = 0; j < 60; ++j)
+	{
+		if ((get_distance(windows.at(size - j - 1)[i], circle_data2.center) >((1 + TH_IN) * circle_data2.radius)) || (get_distance(windows.at(size - j - 1)[i], circle_data2.center) < ((1 - TH_IN) * circle_data2.radius)))
+			return false;
+	}
+
+	if (circle_data3.radius > 200) return false;
+	for (int j = 0; j < 60; ++j)
+	{
+		if ((get_distance(windows.at(size - j - 1)[i], circle_data3.center) >((1 + TH_IN) * circle_data3.radius)) || (get_distance(windows.at(size - j - 1)[i], circle_data3.center) < ((1 - TH_IN) * circle_data3.radius)))
+			return false;
+	}
+	//circle_data1.print();
 	//circle_data1.print();
 	//circle_data2.print();
 	//circle_data3.print();
@@ -203,12 +264,10 @@ bool is_circle(int i)
 	return true;
 }
 
-
 int main(int argc, char** argv)
 {
-	srand(time(NULL));
 	help();
-
+	
 	double start = (double)getTickCount();
 	VideoCapture cap;
 	TermCriteria termcrit(CV_TERMCRIT_ITER | CV_TERMCRIT_EPS, 20, 0.03);
@@ -234,7 +293,7 @@ int main(int argc, char** argv)
 	}
 
 	namedWindow("LK Demo", 1);
-	//setMouseCallback("LK Demo", onMouse, 0);
+	setMouseCallback("LK Demo", onMouse, 0);
 
 	Mat gray, prevGray, image;
 	vector<Point2f> points[2]; // 0 for prev, 1 for next
@@ -243,7 +302,9 @@ int main(int argc, char** argv)
 	vector<KeyPoint> keyPoints;
 
 	double t = 0;
+	double now = 0;
 	double fps = 0;
+	size_t i;
 	for (int cnt = 0;; cnt++)
 	{
 		t = (double)getTickCount();
@@ -263,7 +324,6 @@ int main(int argc, char** argv)
 
 		if (nightMode)
 			image = Scalar::all(0);
-
 		if (needToInit)
 		{
 			// automatic initialization
@@ -274,22 +334,32 @@ int main(int argc, char** argv)
 			KeyPoint::convert(keyPoints, points[1]);
 
 			windows.clear();
-			//addRemovePt = false;
+			for (i = 0; i < circle_num; i++)
+				track_circle[i].clear();
 		}
 		else if (!points[0].empty())
 		{
 			vector<uchar> status;
 			vector<float> err;
+
 			if (prevGray.empty())
 				gray.copyTo(prevGray);
 			calcOpticalFlowPyrLK(prevGray, gray, points[0], points[1], status, err, winSize,
 				3, termcrit, 0, 0.001);
 			windows.push_back(points[1]);
+			now = ((double)getTickCount() - start) / getTickFrequency();
+			for (i = 0; i < circle_num; i++)
+			{
+				track_circle[i].push_back(get_coordinate((int)i,now));
+				if (track_circle[i].size() > MAX_WINDOWS_SIZE)
+					track_circle[i].pop_front();
+				if (i == 0)
+					circle(image, track_circle[i].back(), 3, Scalar(0, 0, 255), -1, 8);
+			}
 			if (windows.size() > MAX_WINDOWS_SIZE)
 				windows.pop_front();
 
-			size_t i, k;
-			for (i = k = 0; i < points[1].size(); i++)
+			for (i = 0; i < points[1].size(); i++)
 			{
 				if (!status[i]) //missing
 					continue;
@@ -297,7 +367,6 @@ int main(int argc, char** argv)
 					circle(image, points[1][i], 3, Scalar(255, 0, 0), -1, 8);
 				else
 				{
-					
 					if (is_circle(i))
 					{
 						circle(image, points[1][i], 3, Scalar(0, 0, 255), -1, 8);
@@ -306,13 +375,12 @@ int main(int argc, char** argv)
 					else
 						circle(image, points[1][i], 3, Scalar(0, 255, 0), -1, 8);
 				}
-				//points[1][k++] = points[1][i];
 
 			}
-			//points[1].resize(k);
 		}
+
 		needToInit = false;
-		if (cnt == 200)
+		if (cnt == UPDATE_CYCLE)
 		{
 			needToInit = true;
 			cnt = 0;
@@ -325,10 +393,10 @@ int main(int argc, char** argv)
 		string fps_string_show("fps:");
 		fps_string_show += fps_string;
 		putText(image, fps_string_show,
-			cv::Point(5, 20),           // 鏂囧瓧鍧愭爣锛屼互宸︿笅瑙掍负鍘熺偣
-			cv::FONT_HERSHEY_SIMPLEX,   // 瀛椾綋绫诲瀷
-			0.5, // 瀛椾綋澶у皬
-			cv::Scalar(0, 0, 0));       // 瀛椾綋棰滆壊
+			cv::Point(5, 20),           // 文字坐标，以左下角为原点
+			cv::FONT_HERSHEY_SIMPLEX,   // 字体类型
+			0.5, // 字体大小
+			cv::Scalar(0, 0, 0));       // 字体颜色
 
 		imshow("LK Demo", image);
 
@@ -355,3 +423,4 @@ int main(int argc, char** argv)
 
 	return 0;
 }
+
