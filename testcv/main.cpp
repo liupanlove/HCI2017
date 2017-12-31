@@ -228,11 +228,12 @@ vector<int> get_rand_points(int max) // int i,     // max >= 3;    // 应该没问题
 
 bool is_circle(deque<Point2f> deque_point)
 {
+	printf("haipa\n");
 	size_t size = deque_point.size();
 	if (size < MAX_WINDOWS_SIZE) return false;
 
 	vector<int> points = get_rand_points(10);
-	CircleData circle_data = findCircle(deque_point[points[size - points[0] - 1]], deque_point[points[size - points[1] - 1]], deque_point[points[size - points[2] - 1]]);
+	CircleData circle_data = findCircle(deque_point[size - points[0] - 1], deque_point[size - points[1] - 1], deque_point[size - points[2] - 1]);
 
 	if (circle_data.radius > 200)  return false;
 	for (int j = 0; j < MAX_WINDOWS_SIZE; ++j)
