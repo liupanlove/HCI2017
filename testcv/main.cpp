@@ -19,7 +19,7 @@ using namespace cv;
 list<deque<Point2f>> windows;
 const int MAX_WINDOWS_SIZE = 64;
 const int MAX_POINT_SIZE = 512;
-const int MAX_ERROR = 8;
+const int MAX_ERROR = 16;
 const int UPDATE_CYCLE = 120;
 const double MIN_DISTANCE = 3;
 const double TH_IN = 0.1;
@@ -229,13 +229,13 @@ vector<int> get_rand_points(int max) // int i,     // max >= 3;    // 应该没问题
 bool is_circle(deque<Point2f> deque_point)
 {
 	size_t size = deque_point.size();
-	if (size < 60) return false;
+	if (size < MAX_WINDOWS_SIZE) return false;
 
 	vector<int> points = get_rand_points(10);
 	CircleData circle_data = findCircle(deque_point[points[size - points[0] - 1]], deque_point[points[size - points[1] - 1]], deque_point[points[size - points[2] - 1]]);
 
 	if (circle_data.radius > 200)  return false;
-	for (int j = 0; j < 60; ++j)
+	for (int j = 0; j < MAX_WINDOWS_SIZE; ++j)
 	{
 		if ((get_distance(deque_point[j], circle_data.center) >((1 + TH_IN) * circle_data.radius)) || (get_distance(deque_point[j], circle_data.center) < ((1 - TH_IN) * circle_data.radius)))
 			return false;
@@ -246,17 +246,11 @@ bool is_circle(deque<Point2f> deque_point)
 vector<deque<Point2f>> get_circle()
 {
 	vector<deque<Point2f>> ans;
-
-
-	//while(list<deque<Point2f>>::iterator iter = windows.begin(); iter != windows.)
 	for (list<deque<Point2f>>::iterator iter = windows.begin(); iter != windows.end(); ++iter)
-	{
 		if (is_circle(*iter))
-		{
 			ans.push_back(*iter);
-		}
-	}
-
+		else
+			ans.push_back(deque<Point2f>());
 	return ans;
 }
 
@@ -350,7 +344,7 @@ int main(int argc, char** argv)
 		vector<bool> accept = acceptTrackedPoint();
 		for (auto iter = windows.begin(); iter != windows.end();)
 		{
-			if (!status[i] || err[i] > MAX_ERROR || !accept[i])
+			if (!status[i] || !accept[i] || err[i] > MAX_ERROR)
 			{
 				iter = windows.erase(iter);
 				i++;
@@ -381,25 +375,13 @@ int main(int argc, char** argv)
 				circle(image, track_circle[i].back(), 3, Scalar(0, 0, 255), -1, 8);
 		}
 
-		for (i = 0; i < points[1].size(); i++)
+		vector<deque<Point2f>> circles = get_circle();
+		for (i = 0; i < points[0].size(); i++)
 		{
-			if (!status[i]) //missing
-				continue;
-			/*
-			if (!acceptTrackedPoint(int(i)))  //relative stable --> non-candidate
-				circle(image, points[1][i], 3, Scalar(255, 0, 0), -1, 8);
-			else
-			{
-				if (is_circle(i))
-				{
-					circle(image, points[1][i], 3, Scalar(0, 0, 255), -1, 8);
-					//printf("a circle has been find\n");
-					print_point(points[1][i]);
-				}
-				else
-					circle(image, points[1][i], 3, Scalar(0, 255, 0), -1, 8);
-			}
-			*/
+			
+			if (circles[i].empty()) //no circle
+				circle(image, points[0][i], 3, Scalar(255, 0, 0), -1, 8);
+			
 			/*
 			else if (windows.size() == MAX_WINDOWS_SIZE)
 			{
@@ -418,8 +400,8 @@ int main(int argc, char** argv)
 					circle(image, points[1][i], 3, Scalar(0, 255, 0), -1, 8);
 			}
 			*/
-			else
-				circle(image, points[1][i], 3, Scalar(0, 255, 0), -1, 8);
+			else 
+				circle(image, points[0][i], 3, Scalar(0, 255, 0), -1, 8);
 			
 		}
 
