@@ -82,7 +82,7 @@ bool acceptTrackedPoint1(deque<Point2f> points)
 	int size = points.size();
 	for (int j = 1; j < size; ++j)
 		cnt += (abs(points.at(j).x - points.at(j - 1).x) + abs(points.at(j).y - points.at(j - 1).y));
-	if (size <= 1) return false;
+	if (size <= 4) return true;
 
 	cnt = cnt / (size - 1);
 	if (cnt > MIN_DISTANCE)
