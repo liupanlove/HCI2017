@@ -22,11 +22,12 @@ const int MAX_POINT_SIZE = 512;
 const int MAX_ERROR = 16;
 const int UPDATE_CYCLE = 120;
 const double MIN_DISTANCE = 3;
-const double TH_IN = 0.5;
-const int circle_num = 4;
-deque<Point2f> track_circle[circle_num];
-bool clockwise[circle_num] = { true, false, true, false };
-double phase0[circle_num] = { .0, .0, PI, PI };
+const double TH_IN = 0.3;
+const double TH_CORR = 0.8;
+const int CIRCLE_NUM = 4;
+deque<Point2f> track_circle[CIRCLE_NUM];
+bool clockwise[CIRCLE_NUM] = { true, false, true, false };
+double phase0[CIRCLE_NUM] = { .0, .0, PI, PI };
 Point2f m_point;
 
 struct Action {
@@ -74,7 +75,8 @@ static void onMouse(int event, int x, int y, int flags, void* param)
 Point2f get_coordinate(int i, double t)
 {
 	double arc = phase0[i] + t * PI;
-	return Point2f(50+10*(float)cos(-arc), 50+10*(float)sin(-arc));
+	arc = clockwise[i] ? arc : -arc;
+	return Point2f(50+50*i+10*(float)cos(-arc), 50+10*(float)sin(-arc));
 }
 
 bool judgeTrackedPoint(deque<Point2f> points)
@@ -268,9 +270,8 @@ int main(int argc, char** argv)
 	Size  winSize(51, 51);
 	//Size subPixWinSize(10, 10);
 
-	const int MAX_COUNT = 500;
+	//const int MAX_COUNT = 500;
 	bool nightMode = false;
-	const int threshold = 20;
 
 	char fps_string[10];
 
@@ -291,7 +292,7 @@ int main(int argc, char** argv)
 	Mat gray, prevGray, image;
 	vector<Point2f> points[2]; // 0 for prev, 1 for next
 
-	Ptr<FastFeatureDetector> m_fastDetector = FastFeatureDetector::create(threshold);
+	Ptr<FastFeatureDetector> m_fastDetector = FastFeatureDetector::create(20);
 	vector<KeyPoint> keyPoints;
 	vector<Point2f> points_key;
 
@@ -366,16 +367,23 @@ int main(int argc, char** argv)
 		}
 
 		now = ((double)getTickCount() - start) / getTickFrequency();
-		for (i = 0; i < circle_num; i++)
+		for (i = 0; i < CIRCLE_NUM; i++)
 		{
 			track_circle[i].push_back(get_coordinate((int)i,now));
 			if (track_circle[i].size() > MAX_WINDOWS_SIZE)
 				track_circle[i].pop_front();
-			if (i == 0)
+			if (i == 0 || i == 1)
 				circle(image, track_circle[i].back(), 3, Scalar(0, 0, 255), -1, 8);
 		}
 
 		vector<deque<Point2f>> circles = get_circle();
+		vector<float> circle_x[CIRCLE_NUM], circle_y[CIRCLE_NUM];
+		for (i = 0; i < CIRCLE_NUM; i++)
+			for (auto j = track_circle[i].begin(); j != track_circle[i].end(); j++)
+			{
+				circle_x[i].push_back(j->x);
+				circle_y[i].push_back(j->y);
+			}
 		for (i = 0; i < points[0].size(); i++)
 		{
 			
@@ -383,21 +391,23 @@ int main(int argc, char** argv)
 				circle(image, points[0][i], 3, Scalar(255, 0, 0), -1, 8);
 			else
 			{
-				vector<float> m_x, m_y, circle_x, circle_y;
-				for (size_t j = 0; j < MAX_WINDOWS_SIZE; j++)
+				vector<float> m_x, m_y;
+				for (auto j = circles[i].begin(); j != circles[i].end(); j++)
 				{
-					m_x.push_back(circles[i][j].x);
-					m_y.push_back(circles[i][j].y);
-					circle_x.push_back(track_circle[0][j].x);
-					circle_y.push_back(track_circle[0][j].y);
+					m_x.push_back(j->x);
+					m_y.push_back(j->y);
 				}
-				if (pearson(m_x.begin(), circle_x.begin(), MAX_WINDOWS_SIZE) > 0.8
-					&& pearson(m_y.begin(), circle_y.begin(), MAX_WINDOWS_SIZE) > 0.8)
-				{	
-					printf("CIRCLE!!!\n");
-					circle(image, points[1][i], 3, Scalar(0, 0, 255), -1, 8);
-				}
-				else
+				bool flag = false;
+				for (int j = 0; j < CIRCLE_NUM; j++)
+					if (pearson(m_x.begin(), circle_x[j].begin(), MAX_WINDOWS_SIZE) > TH_CORR
+						&& pearson(m_y.begin(), circle_y[j].begin(), MAX_WINDOWS_SIZE) > TH_CORR)
+					{	
+						flag = true;
+						printf("CIRCLE %d !!\n",j);
+						circle(image, points[1][i], 3, Scalar(0, 0, 255), -1, 8);
+						break;
+					}
+				if(!flag)
 					circle(image, points[1][i], 3, Scalar(0, 255, 0), -1, 8);
 			}			
 		}
