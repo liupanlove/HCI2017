@@ -3,28 +3,31 @@
 #include "opencv2/highgui/highgui.hpp"
 #include "opencv2/features2d/features2d.hpp"
 #include <deque>
+#include <list>
 #include <iostream>
 #include <ctype.h>
 #include <windows.h>
 #include <string>
 #include <stdio.h>
+#include <numeric>
 
-using namespace cv;
 using namespace std;
+using namespace cv;
 
 #define PI 3.1415926
 
-deque<vector<Point2f>> windows;
-const int MAX_WINDOWS_SIZE = 60;
+list<deque<Point2f>> windows;
+const int MAX_WINDOWS_SIZE = 64;
+const int MAX_POINT_SIZE = 512;
 const int UPDATE_CYCLE = 120;
 const double MIN_DISTANCE = 3;
+const double TH_IN = 0.1;
 const int circle_num = 4;
 deque<Point2f> track_circle[circle_num];
 bool clockwise[circle_num] = { true, false, true, false };
 double phase0[circle_num] = { .0, .0, PI, PI };
 Point2f m_point;
 
-const double TH_IN = 0.05;
 struct Action {
 	/*
 	0 do nothing
@@ -70,9 +73,9 @@ static void onMouse(int event, int x, int y, int flags, void* param)
 Point2f get_coordinate(int i, double t)
 {
 	double arc = phase0[i] + t * PI;
-	return Point2f((float)cos(arc), (float)sin(arc));
+	return Point2f(50+10*(float)cos(-arc), 50+10*(float)sin(-arc));
 }
-
+/*
 bool acceptTrackedPoint(int i)
 {
 	double cnt = 0;
@@ -85,7 +88,7 @@ bool acceptTrackedPoint(int i)
 		return true; // 说明在移动
 	return false;
 }
-
+*/
 template<class InputIt1, class InputIt2>
 double pearson(InputIt1 firstX, InputIt2 firstY, int n) {
 	double xy_sum = inner_product(firstX, firstX + n, firstY, 0);
@@ -204,7 +207,7 @@ vector<int> get_rand_points(int max) // int i,     // max >= 3;    // 应该没问题
 
 	return points;
 }
-
+/*
 bool is_circle(int i)
 {
 	// max = size;
@@ -228,21 +231,21 @@ bool is_circle(int i)
 
 
 	if (circle_data1.radius > 200)  return false;
-	for (int j = 0; j < 60; ++j)
+	for (int j = 0; j < 30; ++j)
 	{
 		if ((get_distance(windows.at(size - j - 1)[i], circle_data1.center) >((1 + TH_IN) * circle_data1.radius)) || (get_distance(windows.at(size - j - 1)[i], circle_data1.center) < ((1 - TH_IN) * circle_data1.radius)))
 			return false;
 	}
 
 	if (circle_data2.radius > 200) return false;
-	for (int j = 0; j < 60; ++j)
+	for (int j = 0; j < 30; ++j)
 	{
 		if ((get_distance(windows.at(size - j - 1)[i], circle_data2.center) >((1 + TH_IN) * circle_data2.radius)) || (get_distance(windows.at(size - j - 1)[i], circle_data2.center) < ((1 - TH_IN) * circle_data2.radius)))
 			return false;
 	}
 
 	if (circle_data3.radius > 200) return false;
-	for (int j = 0; j < 60; ++j)
+	for (int j = 0; j < 30; ++j)
 	{
 		if ((get_distance(windows.at(size - j - 1)[i], circle_data3.center) >((1 + TH_IN) * circle_data3.radius)) || (get_distance(windows.at(size - j - 1)[i], circle_data3.center) < ((1 - TH_IN) * circle_data3.radius)))
 			return false;
@@ -263,6 +266,10 @@ bool is_circle(int i)
 	//printf("%f\n", circle_data.radius);
 	return true;
 }
+*/
+bool response_comparator(const KeyPoint& p1, const KeyPoint& p2) {
+	return p1.response > p2.response;
+}
 
 int main(int argc, char** argv)
 {
@@ -275,7 +282,6 @@ int main(int argc, char** argv)
 	//Size subPixWinSize(10, 10);
 
 	const int MAX_COUNT = 500;
-	bool needToInit = true;
 	bool nightMode = false;
 	const int threshold = 20;
 
@@ -300,12 +306,13 @@ int main(int argc, char** argv)
 
 	Ptr<FastFeatureDetector> m_fastDetector = FastFeatureDetector::create(threshold);
 	vector<KeyPoint> keyPoints;
+	vector<Point2f> points_key;
 
 	double t = 0;
 	double now = 0;
 	double fps = 0;
 	size_t i;
-	for (int cnt = 0;; cnt++)
+	for (points[0].clear(),points[1].clear();;)
 	{
 		t = (double)getTickCount();
 
@@ -324,66 +331,103 @@ int main(int argc, char** argv)
 
 		if (nightMode)
 			image = Scalar::all(0);
-		if (needToInit)
+
+		// automatic initialization
+		//goodFeaturesToTrack(gray, points[1], MAX_COUNT, 0.01, 10, Mat(), 3, false, 0.04);
+		//cornerSubPix(gray, points[1], subPixWinSize, Size(-1, -1), termcrit);
+
+		m_fastDetector->detect(gray, keyPoints);
+		std::sort(keyPoints.begin(), keyPoints.end(), response_comparator);
+		KeyPoint::convert(keyPoints, points_key);
+		int new_size = (int)points_key.size();
+		if (points[0].size() + new_size > MAX_POINT_SIZE)
+			new_size = MAX_POINT_SIZE - (int)points[0].size();
+		points[0].insert(points[0].end(), points_key.begin(), points_key.begin() + new_size);
+
+		printf("prev: %zd\n", points[0].size());
+
+		vector<uchar> status;
+		vector<float> err;
+
+		if (prevGray.empty())
+			gray.copyTo(prevGray);
+		calcOpticalFlowPyrLK(prevGray, gray, points[0], points[1], status, err, winSize,
+			3, termcrit, 0, 0.001);
+		i = 0;
+		points[0].clear();
+		for (auto iter = windows.begin(); iter != windows.end();)
 		{
-			// automatic initialization
-			//goodFeaturesToTrack(gray, points[1], MAX_COUNT, 0.01, 10, Mat(), 3, false, 0.04);
-			//cornerSubPix(gray, points[1], subPixWinSize, Size(-1, -1), termcrit);
-
-			m_fastDetector->detect(gray, keyPoints);
-			KeyPoint::convert(keyPoints, points[1]);
-
-			windows.clear();
-			for (i = 0; i < circle_num; i++)
-				track_circle[i].clear();
-		}
-		else if (!points[0].empty())
-		{
-			vector<uchar> status;
-			vector<float> err;
-
-			if (prevGray.empty())
-				gray.copyTo(prevGray);
-			calcOpticalFlowPyrLK(prevGray, gray, points[0], points[1], status, err, winSize,
-				3, termcrit, 0, 0.001);
-			windows.push_back(points[1]);
-			now = ((double)getTickCount() - start) / getTickFrequency();
-			for (i = 0; i < circle_num; i++)
+			if (!status[i])
 			{
-				track_circle[i].push_back(get_coordinate((int)i,now));
-				if (track_circle[i].size() > MAX_WINDOWS_SIZE)
-					track_circle[i].pop_front();
-				if (i == 0)
-					circle(image, track_circle[i].back(), 3, Scalar(0, 0, 255), -1, 8);
+				iter = windows.erase(iter);
+				i++;
+				continue;
 			}
-			if (windows.size() > MAX_WINDOWS_SIZE)
-				windows.pop_front();
+			if (iter->size() == MAX_WINDOWS_SIZE)
+				iter->pop_front();
+			iter->push_back(points[1][i]);
+			points[0].push_back(points[1][i]);
+			i++;
+			iter++;
+		}
+		while (i < points[1].size())
+		{
+			deque<Point2f> que_point(1, points[1][i]);
+			windows.push_back(que_point);
+			points[0].push_back(points[1][i]);
+			i++;
+		}
 
-			for (i = 0; i < points[1].size(); i++)
+		now = ((double)getTickCount() - start) / getTickFrequency();
+		for (i = 0; i < circle_num; i++)
+		{
+			track_circle[i].push_back(get_coordinate((int)i,now));
+			if (track_circle[i].size() > MAX_WINDOWS_SIZE)
+				track_circle[i].pop_front();
+			if (i == 0)
+				circle(image, track_circle[i].back(), 3, Scalar(0, 0, 255), -1, 8);
+		}
+
+		for (i = 0; i < points[1].size(); i++)
+		{
+			if (!status[i]) //missing
+				continue;
+			/*
+			if (!acceptTrackedPoint(int(i)))  //relative stable --> non-candidate
+				circle(image, points[1][i], 3, Scalar(255, 0, 0), -1, 8);
+			else
 			{
-				if (!status[i]) //missing
-					continue;
-				if (!acceptTrackedPoint(int(i)))  //relative stable --> non-candidate
-					circle(image, points[1][i], 3, Scalar(255, 0, 0), -1, 8);
-				else
+				if (is_circle(i))
 				{
-					if (is_circle(i))
-					{
-						circle(image, points[1][i], 3, Scalar(0, 0, 255), -1, 8);
-						printf("a circle has been find\n");
-					}
-					else
-						circle(image, points[1][i], 3, Scalar(0, 255, 0), -1, 8);
+					circle(image, points[1][i], 3, Scalar(0, 0, 255), -1, 8);
+					//printf("a circle has been find\n");
+					print_point(points[1][i]);
 				}
-
+				else
+					circle(image, points[1][i], 3, Scalar(0, 255, 0), -1, 8);
 			}
-		}
-
-		needToInit = false;
-		if (cnt == UPDATE_CYCLE)
-		{
-			needToInit = true;
-			cnt = 0;
+			*/
+			/*
+			else if (windows.size() == MAX_WINDOWS_SIZE)
+			{
+				vector<float> m_x, m_y, circle_x, circle_y;
+				for (size_t j = 0; j < MAX_WINDOWS_SIZE; j++)
+				{
+					m_x.push_back(windows[j][i].x);
+					m_y.push_back(windows[j][i].y);
+					circle_x.push_back(track_circle[0][j].x);
+					circle_y.push_back(track_circle[0][j].y);
+				}
+				if(pearson(m_x.begin(), circle_x.begin(), MAX_WINDOWS_SIZE) > 0.8
+				&& pearson(m_y.begin(), circle_y.begin(), MAX_WINDOWS_SIZE) > 0.8)
+					circle(image, points[1][i], 3, Scalar(255, 255, 0), -1, 8);
+				else
+					circle(image, points[1][i], 3, Scalar(0, 255, 0), -1, 8);
+			}
+			*/
+			else
+				circle(image, points[1][i], 3, Scalar(0, 255, 0), -1, 8);
+			
 		}
 
 		t = ((double)getTickCount() - t) / getTickFrequency();
@@ -393,10 +437,10 @@ int main(int argc, char** argv)
 		string fps_string_show("fps:");
 		fps_string_show += fps_string;
 		putText(image, fps_string_show,
-			cv::Point(5, 20),           // 文字坐标，以左下角为原点
-			cv::FONT_HERSHEY_SIMPLEX,   // 字体类型
+			Point(5, 20),           // 文字坐标，以左下角为原点
+			FONT_HERSHEY_SIMPLEX,   // 字体类型
 			0.5, // 字体大小
-			cv::Scalar(0, 0, 0));       // 字体颜色
+			Scalar(0, 0, 0));       // 字体颜色
 
 		imshow("LK Demo", image);
 
@@ -405,9 +449,6 @@ int main(int argc, char** argv)
 			break;
 		switch (c)
 		{
-		case 'r':
-			needToInit = true;
-			break;
 		case 'c':
 			points[0].clear();
 			points[1].clear();
@@ -417,7 +458,6 @@ int main(int argc, char** argv)
 			break;
 		}
 
-		std::swap(points[1], points[0]);
 		cv::swap(prevGray, gray);
 	}
 
