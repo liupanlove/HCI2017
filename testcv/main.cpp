@@ -1,4 +1,4 @@
-﻿#include "opencv2/video/tracking.hpp"
+#include "opencv2/video/tracking.hpp"
 #include "opencv2/imgproc/imgproc.hpp"
 #include "opencv2/highgui/highgui.hpp"
 #include "opencv2/features2d/features2d.hpp"
@@ -47,6 +47,18 @@ Point2f get_coordinate(int i, double t)
 	return Point2f((float)cos(arc), (float)sin(arc));
 }
 
+template<class InputIt1, class InputIt2>
+double pearson(InputIt1 firstX, InputIt2 firstY, int n) {
+	double xy_sum = inner_product(firstX, firstX + n, firstY, 0);
+	double x2_sum = inner_product(firstX, firstX + n, firstX, 0);
+	double y2_sum = inner_product(firstY, firstY + n, firstY, 0);
+	double x_sum = accumulate(firstX, firstX + n, 0);
+	double y_sum = accumulate(firstY, firstY + n, 0);
+
+	double deno = sqrt((x2_sum - 1.0 * pow(x_sum, 2) / n)*(y2_sum - 1.0 * pow(y_sum, 2) / n));
+	return (xy_sum - 1.0 * x_sum * y_sum / n) / deno;
+}
+
 bool acceptTrackedPoint(int i)
 {
 	double cnt = 0;
@@ -58,14 +70,14 @@ bool acceptTrackedPoint(int i)
 	cnt = cnt / (windows.size() - 1);
 	//cout << cnt << endl;
 	if (cnt > MIN_DISTANCE)
-		return true; // 说明在移动
+		return true; // 说明在移�?
 	return false;
 }
 
 struct CircleData
 {
 	Point2f center;
-	int radius;
+	double radius;
 };
 
 CircleData findCircle(Point2f pt1, Point2f pt2, Point2f pt3)
@@ -91,7 +103,7 @@ CircleData findCircle(Point2f pt1, Point2f pt2, Point2f pt3)
 		CD.center.y = pt1.y;
 	}
 	else {
-		//不共线则求出圆心：
+		//不共线则求出圆心�?
 		//center.x = (C1*B2 - C2*B1) / A1*B2 - A2*B1;
 		//center.y = (A1*C2 - A2*C1) / A1*B2 - A2*B1;
 		CD.center.x = (C1*B2 - C2 * B1) / temp;
@@ -133,15 +145,24 @@ vector<int> get_rand_points(int max) // int i,     // max >= 3;
 }
 bool is_circle(int i)
 {
+	 // max = size;
 	int size = windows.size();
-	vector<int> points = get_rand_points(size);
+	int max = size;
+	vector<int> points = get_rand_points(max);
 
 	int point1 = points[0];
 	int point2 = points[1];
 	int point3 = points[2];
 
-	CircleData circle_data = findCircle(windows.at(i)[point1], windows.at(i)[point2], windows.at(i)[point3]);
+	CircleData circle_data = findCircle(windows.at(point1)[i], windows.at(point2)[i], windows.at(point3)[i]);
 
+	for (int j = 0; j < max; ++j)
+	{
+		if ((get_distance(windows.at(size - j - 1)[i], circle_data.center) > (1 + TH_IN) * circle_data.radius) || (get_distance(windows.at(size - j - 1)[i], circle_data.center) < (1 - TH_IN) * circle_data.radius))
+			return false;
+	}
+
+	return true;
 }
 int main(int argc, char** argv)
 {
@@ -289,4 +310,3 @@ int main(int argc, char** argv)
 
 	return 0;
 }
-
