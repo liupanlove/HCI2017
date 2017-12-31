@@ -19,6 +19,7 @@ using namespace cv;
 list<deque<Point2f>> windows;
 const int MAX_WINDOWS_SIZE = 64;
 const int MAX_POINT_SIZE = 512;
+const int MAX_ERROR = 8;
 const int UPDATE_CYCLE = 120;
 const double MIN_DISTANCE = 3;
 const double TH_IN = 0.1;
@@ -76,20 +77,19 @@ Point2f get_coordinate(int i, double t)
 	return Point2f(50+10*(float)cos(-arc), 50+10*(float)sin(-arc));
 }
 
-bool acceptTrackedPoint1(deque<Point2f> points)
+bool judgeTrackedPoint(deque<Point2f> points)
 {
 	double cnt = 0;
-	int size = points.size();
-	for (int j = 1; j < size; ++j)
-		cnt += (abs(points.at(j).x - points.at(j - 1).x) + abs(points.at(j).y - points.at(j - 1).y));
+	size_t size = points.size();
 	if (size <= 4) return true;
 
+	for (int j = 1; j < size; ++j)
+		cnt += (abs(points.at(j).x - points.at(j - 1).x) + abs(points.at(j).y - points.at(j - 1).y));
 	cnt = cnt / (size - 1);
 	if (cnt > MIN_DISTANCE)
 		return true; // 说明在移动
 	return false;
 }
-
 
 vector<bool> acceptTrackedPoint()
 {
@@ -97,14 +97,13 @@ vector<bool> acceptTrackedPoint()
 
 	for (list<deque<Point2f>>::iterator iter = windows.begin(); iter != windows.end(); ++iter)
 	{
-		if (acceptTrackedPoint1(*iter))
+		if (judgeTrackedPoint(*iter))
 		{
 			ans.push_back(true);
 		}
 		else
 			ans.push_back(false);
 	}
-
 	return ans;
 }
 
@@ -144,12 +143,6 @@ else
 	action.value = set_bar(points[1][0]);
 }
 */
-
-
-
-bool response_comparator(const KeyPoint& p1, const KeyPoint& p2) {
-	return p1.response > p2.response;
-}
 
 void print_point(Point2f point)
 {
@@ -235,7 +228,7 @@ vector<int> get_rand_points(int max) // int i,     // max >= 3;    // 应该没问题
 
 bool is_circle(deque<Point2f> deque_point)
 {
-	int size = deque_point.size();
+	size_t size = deque_point.size();
 	if (size < 60) return false;
 
 	vector<int> points = get_rand_points(10);
@@ -267,65 +260,10 @@ vector<deque<Point2f>> get_circle()
 	return ans;
 }
 
-/*bool is_circle(int i) // deque<Point2f> deque_point
-{
-
-// max = size;
-int size = windows.size();
-//printf("%d\n", size);
-if (size < 60) return false;
-int max = 59;
-
-vector<int> points = get_rand_points(10);      // 0-9
-CircleData circle_data1 = findCircle(windows.at(59 - points[0])[i], windows.at(59 - points[1])[i], windows.at(59 - points[2])[i]);
-
-points = get_rand_points(10);
-CircleData circle_data2 = findCircle(windows.at(59 - points[0])[i], windows.at(59 - points[1])[i], windows.at(59 - points[2])[i]);
-
-points = get_rand_points(10);
-CircleData circle_data3 = findCircle(windows.at(59 - points[0])[i], windows.at(59 - points[1])[i], windows.at(59 - points[2])[i]);
-
-//circle_data1.print();
-//circle_data2.print();
-//circle_data3.print();
-
-
-if (circle_data1.radius > 200)  return false;
-for (int j = 0; j < 60; ++j)
-{
-if ((get_distance(windows.at(size - j - 1)[i], circle_data1.center) >((1 + TH_IN) * circle_data1.radius)) || (get_distance(windows.at(size - j - 1)[i], circle_data1.center) < ((1 - TH_IN) * circle_data1.radius)))
-return false;
+bool response_comparator(const KeyPoint& p1, const KeyPoint& p2) {
+	return p1.response > p2.response;
 }
 
-/*if (circle_data2.radius > 200) return false;
-for (int j = 0; j < 60; ++j)
-{
-if ((get_distance(windows.at(size - j - 1)[i], circle_data2.center) >((1 + TH_IN) * circle_data2.radius)) || (get_distance(windows.at(size - j - 1)[i], circle_data2.center) < ((1 - TH_IN) * circle_data2.radius)))
-return false;
-}
-
-if (circle_data3.radius > 200) return false;
-for (int j = 0; j < 60; ++j)
-{
-if ((get_distance(windows.at(size - j - 1)[i], circle_data3.center) >((1 + TH_IN) * circle_data3.radius)) || (get_distance(windows.at(size - j - 1)[i], circle_data3.center) < ((1 - TH_IN) * circle_data3.radius)))
-return false;
-}
-//circle_data1.print();
-//circle_data1.print();
-//circle_data2.print();
-//circle_data3.print();
-
-//printf("\n");
-//for (int j = 0; j < max; ++j)
-//{
-//	printf("%f %f\n", windows.at(size - j - 1)[i].x, windows.at(size - j - 1)[i].y);
-//}
-//cout << circle_data.center << endl;
-//cout << circle_data.radius << endl;
-//printf("%d\n", size);
-//printf("%f\n", circle_data.radius);
-return true;
-}*/
 int main(int argc, char** argv)
 {
 	help();
@@ -399,8 +337,6 @@ int main(int argc, char** argv)
 			new_size = MAX_POINT_SIZE - (int)points[0].size();
 		points[0].insert(points[0].end(), points_key.begin(), points_key.begin() + new_size);
 
-		printf("prev: %zd\n", points[0].size());
-
 		vector<uchar> status;
 		vector<float> err;
 
@@ -408,11 +344,13 @@ int main(int argc, char** argv)
 			gray.copyTo(prevGray);
 		calcOpticalFlowPyrLK(prevGray, gray, points[0], points[1], status, err, winSize,
 			3, termcrit, 0, 0.001);
+
 		i = 0;
 		points[0].clear();
+		vector<bool> accept = acceptTrackedPoint();
 		for (auto iter = windows.begin(); iter != windows.end();)
 		{
-			if (!status[i])
+			if (!status[i] || err[i] > MAX_ERROR || !accept[i])
 			{
 				iter = windows.erase(iter);
 				i++;
@@ -518,3 +456,4 @@ int main(int argc, char** argv)
 
 	return 0;
 }
+
