@@ -316,6 +316,10 @@ public:
 
     Action judge_process(Mat img)
     {
+		
+		double t = (double)getTickCount();
+		
+		
         action->action_type = 0;
         action->sub_action_type = 0;
         action->value = 0;
@@ -482,7 +486,20 @@ public:
                 }
             }
         }
+		
+		t = ((double)getTickCount() - t) / getTickFrequency();
+		fps = 1.0 / t;
+		sprintf(fps_string, "%.2f", fps);
 
+		string fps_string_show("fps:");
+		fps_string_show += fps_string;
+		putText(image, fps_string_show,
+			Point(5, 20),           // 文字坐标，以左下角为原点
+			FONT_HERSHEY_SIMPLEX,   // 字体类型
+			0.5, // 字体大小
+			Scalar(0, 0, 0));       // 字体颜色
+
+		imshow("LK Demo", image);
 
         cv::swap(prevGray, gray);
         return *action;
