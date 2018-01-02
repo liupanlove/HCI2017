@@ -319,7 +319,6 @@ public:
 		
 		double t = (double)getTickCount();
 		
-		
         action->action_type = 0;
         action->sub_action_type = 0;
         action->value = 0;
@@ -395,8 +394,8 @@ public:
                 track_circle[i].push_back(get_coordinate((int)i, now));
                 if (track_circle[i].size() > MAX_WINDOWS_SIZE)
                     track_circle[i].pop_front();
-                //if (i == 0 || i == 1)
-                    //circle(image, track_circle[i].back(), 3, Scalar(0, 0, 255), -1, 8);
+                if (i == 0 || i == 1)
+                    circle(image, track_circle[i].back(), 3, Scalar(0, 0, 255), -1, 8);
             }
 
             vector<deque<Point2f>> m_circles = get_circle();
@@ -410,8 +409,8 @@ public:
             for (i = 0; i < points[0].size(); i++)
             {
 
-                //if (m_circles[i].empty()) //no circle
-                    //circle(image, points[0][i], 3, Scalar(255, 0, 0), -1, 8);
+                if (m_circles[i].empty()) //no circle
+                    circle(image, points[0][i], 3, Scalar(255, 0, 0), -1, 8);
                 if(!m_circles[i].empty())
                 {
                     vector<float> m_x, m_y;
@@ -420,14 +419,14 @@ public:
                         m_x.push_back(j->x);
                         m_y.push_back(j->y);
                     }
-                    //bool flag = false;
+                    bool flag = false;
                     for (int j = 0; j < CIRCLE_NUM; j++)
                         if (pearson(m_x.begin(), circle_x[j].begin(), MAX_WINDOWS_SIZE) > TH_CORR
                             && pearson(m_y.begin(), circle_y[j].begin(), MAX_WINDOWS_SIZE) > TH_CORR)
                         {
-                            //flag = true;
+                            flag = true;
                             //printf("CIRCLE %d !!\n", j);
-                            //circle(image, points[0][i], 3, Scalar(0, 0, 255), -1, 8);
+                            circle(image, points[0][i], 3, Scalar(0, 0, 255), -1, 8);
 							if(j == 0)
 								j = 4;
 							action->action_type = j;
@@ -447,8 +446,8 @@ public:
                             }
                             break;
                         }
-                    //if (!flag)
-                        //circle(image, points[0][i], 3, Scalar(0, 255, 0), -1, 8);
+                    if (!flag)
+                        circle(image, points[0][i], 3, Scalar(0, 255, 0), -1, 8);
                 }
                 if (state_setting)
                     break;
@@ -481,7 +480,7 @@ public:
                 {
                     action->sub_action_type = point_y < TH_WARNING ? 0 : 1;
                     action->value = set_bar(points[1][0]);
-                    //circle(image, points[1][0], 3, Scalar(0, 0, 255), -1, 8);
+                    circle(image, points[1][0], 3, Scalar(0, 0, 255), -1, 8);
                     std::swap(points[0], points[1]);
                 }
             }
